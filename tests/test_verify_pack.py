@@ -136,6 +136,78 @@ def test_mismatch_report_file_sections(tmp_path, run, make_tree, line):
     assert "missing.bin" in text
 
 
+def test_without_drop_initial_directory(tmp_path, run, make_tree, line):
+    # When the SMDB paths are already relative to the verified folder, no -x
+    # is needed; this exercises the "do not drop first level" branch.
+    make_tree(tmp_path, {"pack": {"USA": {"a.bin": "aaa"}}})
+    db = tmp_path / "db.txt"
+    write_db(db, [line("USA/a.bin", "aaa")])
+
+    result = run("verify_pack.py",
+                 ["-f", "pack", "-d", str(db)], cwd=tmp_path)
+
+    assert result.returncode == 0
+    assert counts(result.stdout) == {
+        "incorrect location": 0, "extra": 0, "missing": 0,
+    }
+
+
+def test_new_line_flag_still_verifies(tmp_path, run, make_tree, line):
+    # -l only changes the progress printing branch; the verdict is unchanged.
+    make_tree(tmp_path, {"pack": {"USA": {"a.bin": "aaa"}}})
+    db = tmp_path / "db.txt"
+    write_db(db, [line("pack/USA/a.bin", "aaa")])
+
+    result = run("verify_pack.py",
+                 ["-f", "pack", "-d", str(db), "-x", "-l"], cwd=tmp_path)
+
+    assert result.returncode == 0
+    assert counts(result.stdout) == {
+        "incorrect location": 0, "extra": 0, "missing": 0,
+    }
+
+
+def test_report_with_only_extra_files(tmp_path, run, make_tree, line):
+    # Report written with just the "Extra Files" section present.
+    make_tree(tmp_path, {
+        "pack": {"USA": {"a.bin": "aaa", "extra.bin": "extra"}},
+    })
+    db = tmp_path / "db.txt"
+    write_db(db, [line("pack/USA/a.bin", "aaa")])
+    report = tmp_path / "mismatch.txt"
+
+    result = run("verify_pack.py",
+                 ["-f", "pack", "-d", str(db), "-x", "-m", str(report)],
+                 cwd=tmp_path)
+
+    assert result.returncode == 0
+    text = report.read_text()
+    assert "Extra Files:" in text
+    assert "Incorrect Location Files:" not in text
+    assert "Missing Files:" not in text
+
+
+def test_report_with_only_missing_files(tmp_path, run, make_tree, line):
+    # Report written with just the "Missing Files" section present.
+    make_tree(tmp_path, {"pack": {"USA": {"a.bin": "aaa"}}})
+    db = tmp_path / "db.txt"
+    write_db(db, [
+        line("pack/USA/a.bin", "aaa"),
+        line("pack/USA/gone.bin", "gone"),
+    ])
+    report = tmp_path / "mismatch.txt"
+
+    result = run("verify_pack.py",
+                 ["-f", "pack", "-d", str(db), "-x", "-m", str(report)],
+                 cwd=tmp_path)
+
+    assert result.returncode == 0
+    text = report.read_text()
+    assert "Missing Files:" in text
+    assert "Incorrect Location Files:" not in text
+    assert "Extra Files:" not in text
+
+
 def test_no_report_written_when_everything_matches(tmp_path, run, make_tree,
                                                    line):
     make_tree(tmp_path, {"pack": {"USA": {"a.bin": "aaa"}}})
