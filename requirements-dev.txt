@@ -1,3 +1,5 @@
 # Development / test dependencies only.
 # The scripts themselves depend on the Python standard library exclusively.
 pytest>=7.0
+coverage>=7.0
+

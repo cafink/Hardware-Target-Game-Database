@@ -1,0 +1,19 @@
+# Coverage.py configuration.
+#
+# The tests run each script as a *subprocess*, so coverage has to measure
+# those child processes. We do that with parallel-mode data files (one per
+# child) which are merged with `coverage combine`. The test runner wraps each
+# child in `coverage run` when the COVERAGE_PROCESS_START environment variable
+# points at this file (see tests/conftest.py).
+[run]
+parallel = true
+branch = true
+
+[report]
+# Only report on the project's own scripts, wherever they ran from.
+include =
+    */parse_pack.py
+    */build_pack.py
+    */verify_pack.py
+    */base_sorter.py
+show_missing = true

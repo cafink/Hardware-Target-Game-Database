@@ -38,4 +38,27 @@ pytest                                           # from the repository root
 ```
 
 The scripts themselves depend only on the Python standard library; `pytest`
-is the sole development dependency.
+and `coverage` are the only development dependencies.
+
+## Measuring coverage
+
+Because the tests run each script as a **subprocess**, a plain `pytest --cov`
+would only measure the test process and report almost no coverage of the
+scripts. Instead we measure the child processes with `coverage.py` in
+parallel mode: when `COVERAGE_PROCESS_START` is set, `conftest.py` launches
+each script under `coverage run`, and the per-process data files are merged
+afterwards.
+
+```sh
+export COVERAGE_FILE="$PWD/.coverage"        # absolute: tests run in temp dirs
+export COVERAGE_PROCESS_START="$PWD/.coveragerc"
+
+coverage erase
+pytest                                       # children record coverage
+coverage combine                             # merge the per-process data
+coverage report                              # text summary (or: coverage html)
+```
+
+`COVERAGE_FILE` must be an absolute path: each test runs the script from a
+temporary working directory, and without it the data files would be written
+into (and lost with) those temp dirs.

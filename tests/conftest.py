@@ -39,7 +39,15 @@ def run_script(script_name, args, cwd):
     Returns a ``subprocess.CompletedProcess`` (stdout/stderr captured as text).
     """
     script_path = os.path.join(REPO_ROOT, script_name)
-    cmd = [sys.executable, script_path] + list(args)
+    # When measuring coverage (see .coveragerc / tests/README.md), the child
+    # process is launched under `coverage run` so the script's execution is
+    # recorded. Normal test runs are unaffected and need no coverage install.
+    rcfile = os.environ.get("COVERAGE_PROCESS_START")
+    if rcfile:
+        cmd = [sys.executable, "-m", "coverage", "run",
+               "--rcfile=" + rcfile, script_path] + list(args)
+    else:
+        cmd = [sys.executable, script_path] + list(args)
     return subprocess.run(
         cmd,
         cwd=str(cwd),

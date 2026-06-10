@@ -5,3 +5,8 @@ EverDrive Pack SMDBs/NT Jailbreak SMDB.txt
 __pycache__/
 *.pyc
 .pytest_cache/
+
+# Coverage data and reports
+.coverage
+.coverage.*
+htmlcov/
