@@ -16,4 +16,5 @@ include =
     */build_pack.py
     */verify_pack.py
     */base_sorter.py
+    */htgdb_common.py
 show_missing = true

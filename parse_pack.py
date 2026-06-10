@@ -7,9 +7,9 @@ paths and hash values.
 import os
 import sys
 import time
-import zlib
-import hashlib
 import argparse
+
+import htgdb_common as common
 
 
 __author__ = "aquaman"
@@ -29,10 +29,8 @@ def option_parse():
     """
     parser = argparse.ArgumentParser(
         description="list file names and produce hash values.")
-    # Add support for boolean arguments. Allows us to accept 1-argument forms
-    # of boolean flags whose values are any of "yes", "true", "t" or "1".
-    parser.register('type', 'bool', (lambda x: x.lower() in
-                                     ("yes", "true", "t", "1")))
+    # Add support for the shared boolean flags.
+    common.register_bool_type(parser)
 
     parser.add_argument("-f", "--folder",
                         dest="target_folder",
@@ -45,26 +43,9 @@ def option_parse():
                         help="set output file")
 
     # Valid uses of this flag include: -l, -l true, -l yes, --new_line=1
-    parser.add_argument("-l", "--new_line",
-                        dest="new_line",
-                        default=False,
-                        # nargs and const below allow us to accept the
-                        # zero-argument form of --skip_existing
-                        nargs="?",
-                        const=True,
-                        type='bool',
-                        help=("Changes the way the stdout is printed, and "
-                              "allows for UI subprocess monitoring."))
+    common.add_new_line_argument(parser)
 
     return parser.parse_args()
-
-
-def print_progress(current, end):
-    print_function("processing file: {:>9}".format(current), end=end)
-
-
-def print_function(text, end, file=sys.stdout, flush=True):
-    print(text, end=end, file=file, flush=flush)
 
 
 def parse_folder(target_folder, output_file):
@@ -119,57 +100,31 @@ def parse_folder(target_folder, output_file):
                         print("Error (non-ASCII character):", filename,
                               file=sys.stdout)
                         time.sleep(10)  # alternatively: sys.exit(1)
-                    sha256 = hashlib.sha256()
-                    sha1 = hashlib.sha1()
-                    md5 = hashlib.md5()
-                    crc = 0
-                    size = 0
-
                     # exclude certain folders and files
                     if not (any(s in filename for s in banned_folders) or
                             filename.lower().endswith(banned_suffixes)):
                         try:
-                            with open(absolute_filename,
-                                      "rb",
-                                      buffering=0) as f:
-                                # use a small buffer to compute hash
-                                # values to avoid storing large files
-                                # in memory (changing buffer size does
-                                # not change parsing speed much)
-                                for b in iter(lambda: f.read(128 * 1024), b''):
-                                    sha256.update(b)
-                                    sha1.update(b)
-                                    md5.update(b)
-                                    crc = zlib.crc32(b, crc)
-                                size = os.path.getsize(f.name)
-
+                            digests = common.file_digests(absolute_filename)
                         except FileNotFoundError:
                             # Windows default API is limited to paths of
                             # 260 characters
-                            absolute_filename = u'\\\\?\\' + absolute_filename
-                            with open(absolute_filename,
-                                      "rb",
-                                      buffering=0) as f:
-                                for b in iter(lambda: f.read(128 * 1024), b''):
-                                    sha256.update(b)
-                                    sha1.update(b)
-                                    md5.update(b)
-                                    crc = zlib.crc32(b, crc)
-                                size = os.path.getsize(f.name)
+                            digests = common.file_digests(
+                                u'\\\\?\\' + absolute_filename)
 
-                        print(sha256.hexdigest(),
+                        print(digests.sha256,
                               filename,
-                              sha1.hexdigest(),
-                              md5.hexdigest(),
-                              '{0:08x}'.format(crc & 0xffffffff),
-                              size,
+                              digests.sha1,
+                              digests.md5,
+                              digests.crc32,
+                              digests.size,
                               sep="\t",
                               file=output_file)
                         i += 1
-                        print_progress(i, END_LINE)
+                        common.print_message(common.format_progress(i),
+                                             END_LINE)
         else:
             if not args.new_line:
-                print_progress(i, "\n")
+                common.print_message(common.format_progress(i), "\n")
 
     return None
 

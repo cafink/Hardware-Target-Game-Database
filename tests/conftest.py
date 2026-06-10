@@ -20,6 +20,11 @@ import pytest
 # Repository root = parent of this tests/ directory.
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+# Make the repository's modules importable for in-process unit tests
+# (the scripts are run via subprocess; shared helpers are imported directly).
+if REPO_ROOT not in sys.path:
+    sys.path.insert(0, REPO_ROOT)
+
 
 @pytest.fixture
 def repo_root():

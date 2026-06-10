@@ -5,9 +5,10 @@ Use a database to verify files.
 """
 import os
 import sys
-import hashlib
 import argparse
 from collections import defaultdict
+
+import htgdb_common as common
 
 
 __author__ = "Steve Matos (parts by aquaman)"
@@ -27,10 +28,8 @@ if __name__ == '__main__':
     """
     parser = argparse.ArgumentParser(
         description="Use a database to verify files.")
-    # Add support for boolean arguments. Allows us to accept 1-argument forms
-    # of boolean flags whose values are any of "yes", "true", "t" or "1".
-    parser.register('type', 'bool', (lambda x: x.lower() in
-                                     ("yes", "true", "t", "1")))
+    # Add support for the shared boolean flags.
+    common.register_bool_type(parser)
 
     parser.add_argument("-f", "--folder",
                         dest="target_folder",
@@ -48,29 +47,11 @@ if __name__ == '__main__':
                         help="list mismatch files")
 
     # Valid uses of this flag include: -l, -l true, -l yes, --new_line=1
-    parser.add_argument("-l", "--new_line",
-                        dest="new_line",
-                        default=False,
-                        # nargs and const below allow us to accept the
-                        # zero-argument form of --new_line
-                        nargs="?",
-                        const=True,
-                        type='bool',
-                        help=("Changes the way the stdout is printed, and "
-                              "allows for UI subprocess monitoring."))
+    common.add_new_line_argument(parser)
 
     # Valid uses of this flag include: -x, -x true, -x yes,
     # --drop_initial_directory=1
-    parser.add_argument("-x", "--drop_initial_directory",
-                        dest="drop_initial_directory",
-                        default=False,
-                        # nargs and const below allow us to accept the
-                        # zero-argument form of --drop_initial_directory
-                        nargs="?",
-                        const=True,
-                        type='bool',
-                        help=("Drops the 1st directory path in the SMDB file "
-                              "so you can customize the name."))
+    common.add_drop_initial_directory_argument(parser)
 
     ARGS = parser.parse_args()
 
@@ -95,15 +76,6 @@ def parse_database(target_database, drop_initial_directory):
     return db, number_of_entries
 
 
-def print_progress(current, total, end):
-    print_function("processing file: {:>9} / {}".format(current, total),
-                   end=end)
-
-
-def print_function(text, end, file=sys.stdout, flush=True):
-    print(text, end=end, file=file, flush=flush)
-
-
 def parse_folder(target_folder, db):
     """
     Read each file, produce a hash value and
@@ -122,9 +94,9 @@ def parse_folder(target_folder, db):
                                         os.path.normpath(f))
                 absolute_filename = u'\\\\?\\' + os.path.abspath(filename)
                 try:
-                    hash_sha256 = get_hash(filename)
+                    hash_sha256 = common.sha256_file(filename)
                 except FileNotFoundError:
-                    hash_sha256 = get_hash(absolute_filename)
+                    hash_sha256 = common.sha256_file(absolute_filename)
 
                 if hash_sha256 in db:
                     rel_path = os.path.relpath(filename, target_folder)
@@ -141,26 +113,15 @@ def parse_folder(target_folder, db):
                     extra_files.append((filename, hash_sha256))
 
                 current_file += 1
-                print_progress(current_file, total_files, END_LINE)
+                common.print_message(
+                    common.format_progress(current_file, total_files),
+                    END_LINE)
     else:
         if not ARGS.new_line:
-            print_progress(current_file, total_files, "\n")
+            common.print_message(
+                common.format_progress(current_file, total_files), "\n")
 
     return bad_location_files, extra_files
-
-
-def get_hash(filename):
-    """
-    Return sha256 hash of the file.
-    """
-    h = hashlib.sha256()
-    with open(filename, "rb", buffering=0) as f:
-        # use a small buffer to compute hash to
-        # avoid memory overload
-        for b in iter(lambda: f.read(128 * 1024), b''):
-            h.update(b)
-
-    return h.hexdigest()
 
 
 # *********************************************************************#

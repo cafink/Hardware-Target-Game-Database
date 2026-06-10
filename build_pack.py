@@ -6,11 +6,12 @@ use a database to identify and organize files.
 import os
 import sys
 import shutil
-import hashlib
 import argparse
 import zipfile
 from collections import defaultdict
 from collections import Counter
+
+import htgdb_common as common
 
 
 __author__ = "aquaman"
@@ -30,10 +31,8 @@ if __name__ == '__main__':
     """
     parser = argparse.ArgumentParser(
         description="use a database to identify and organize files.")
-    # Add support for boolean arguments. Allows us to accept 1-argument forms
-    # of boolean flags whose values are any of "yes", "true", "t" or "1".
-    parser.register('type', 'bool', (lambda x: x.lower() in
-                                     ("yes", "true", "t", "1")))
+    # Add support for the shared boolean flags.
+    common.register_bool_type(parser)
 
     parser.add_argument("-i", "--input_folder",
                         dest="source_folder",
@@ -65,41 +64,14 @@ if __name__ == '__main__':
                               "successive files."))
 
     # Valid uses of this flag include: -s, -s true, -s yes, --skip_existing=1
-    parser.add_argument("-s", "--skip_existing",
-                        dest="skip_existing",
-                        default=False,
-                        # nargs and const below allow us to accept the
-                        # zero-argument form of --skip_existing
-                        nargs="?",
-                        const=True,
-                        type='bool',
-                        help=("Skip files which already exist at the "
-                              "destination without overwriting them."))
+    common.add_skip_existing_argument(parser)
 
     # Valid uses of this flag include: -l, -l true, -l yes, --new_line=1
-    parser.add_argument("-l", "--new_line",
-                        dest="new_line",
-                        default=False,
-                        # nargs and const below allow us to accept the
-                        # zero-argument form of --new_line
-                        nargs="?",
-                        const=True,
-                        type='bool',
-                        help=("Changes the way the stdout is printed, and "
-                              "allows for UI subprocess monitoring."))
+    common.add_new_line_argument(parser)
 
     # Valid uses of this flag include: -x, -x true, -x yes,
     # --drop_initial_directory=1
-    parser.add_argument("-x", "--drop_initial_directory",
-                        dest="drop_initial_directory",
-                        default=False,
-                        # nargs and const below allow us to accept the
-                        # zero-argument form of --drop_initial_directory
-                        nargs="?",
-                        const=True,
-                        type='bool',
-                        help=("Drops the 1st directory path in the SMDB file "
-                              "so you can customize the name."))
+    common.add_drop_initial_directory_argument(parser)
 
     ARGS = parser.parse_args()
 
@@ -231,15 +203,6 @@ def parse_database(target_database, drop_initial_directory):
     return db, number_of_entries
 
 
-def print_progress(current, total, end):
-    print_function("processing file: {:>9} / {}".format(current, total),
-                   end=end)
-
-
-def print_function(text, end, file=sys.stdout, flush=True):
-    print(text, end=end, file=file, flush=flush)
-
-
 def parse_folder(source_folder, db, output_folder):
     """
     read each file, produce a hash value and place it in the directory tree.
@@ -289,10 +252,11 @@ def parse_folder(source_folder, db, output_folder):
                         del db[h]
 
                 i += 1
-                print_progress(i, total, END_LINE)
+                common.print_message(common.format_progress(i, total),
+                                     END_LINE)
     else:
         if not ARGS.new_line:
-            print_progress(i, total, "\n")
+            common.print_message(common.format_progress(i, total), "\n")
 
 
 def get_hashes(filename):
@@ -302,17 +266,9 @@ def get_hashes(filename):
         - additional hashes if the file is a compressed archive
     """
     hashes = {}
-    h = hashlib.sha256()
 
-    # hash the file itself
-    with open(filename, "rb", buffering=0) as f:
-        # use a small buffer to compute hash to
-        # avoid memory overload
-        for b in iter(lambda: f.read(128 * 1024), b''):
-            h.update(b)
-
-    # add file hash to dict
-    hashes[h.hexdigest()] = {
+    # add the file's own SHA256 hash to dict
+    hashes[common.sha256_file(filename)] = {
         'filename': filename,
         'archive': None
     }

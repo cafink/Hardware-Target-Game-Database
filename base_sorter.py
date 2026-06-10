@@ -9,6 +9,8 @@ import os
 import re
 import sys
 
+import htgdb_common as common
+
 __author__ = "BuraBure"
 __date__ = "2022/05/16"
 __version__ = "$Revision: 1.0"
@@ -66,10 +68,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description="Game backup basic sorting.")
 
-    # Add support for boolean arguments. Allows us to accept 1-argument forms
-    # of boolean flags whose values are any of "yes", "true", "t" or "1".
-    parser.register('type', 'bool', (lambda x: x.lower() in
-                                     ("yes", "true", "t", "1")))
+    # Add support for the shared boolean flags.
+    common.register_bool_type(parser)
 
     parser.add_argument("--debug",
                         dest="debug",
