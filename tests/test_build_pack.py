@@ -12,6 +12,7 @@ Note: parse_database here splits each SMDB line into 5 columns
 their crc, so the fixtures use full 6-column SMDB lines.
 """
 import os
+import struct
 import zipfile
 
 
@@ -189,6 +190,44 @@ def test_creates_missing_empty_file(tmp_path, run, make_tree, line):
     assert empty.stat().st_size == 0
 
 
+def test_existing_empty_target_overwritten_without_skip(tmp_path, run,
+                                                        make_tree, line):
+    # The empty-file target already exists with content; without
+    # --skip_existing it is removed and recreated empty.
+    make_tree(tmp_path, {
+        "src": {"keep.bin": "x"},
+        "out": {"outpack": {"empty.bin": "stale-content"}},
+    })
+    db = tmp_path / "db.txt"
+    write_db(db, [line("outpack/empty.bin", "")])
+    out = tmp_path / "out"
+
+    result = run("build_pack.py",
+                 ["-i", "src", "-d", str(db), "-o", str(out)],
+                 cwd=tmp_path)
+
+    assert result.returncode == 0
+    assert (out / "outpack" / "empty.bin").stat().st_size == 0
+
+
+def test_existing_empty_target_kept_with_skip(tmp_path, run, make_tree, line):
+    # With --skip_existing the pre-existing target is left untouched.
+    make_tree(tmp_path, {
+        "src": {"keep.bin": "x"},
+        "out": {"outpack": {"empty.bin": "stale-content"}},
+    })
+    db = tmp_path / "db.txt"
+    write_db(db, [line("outpack/empty.bin", "")])
+    out = tmp_path / "out"
+
+    result = run("build_pack.py",
+                 ["-i", "src", "-d", str(db), "-o", str(out), "-s"],
+                 cwd=tmp_path)
+
+    assert result.returncode == 0
+    assert read(out / "outpack" / "empty.bin") == b"stale-content"
+
+
 def test_zip_with_extra_entries_skips_nonmatching(tmp_path, run, make_tree):
     src = tmp_path / "src"
     src.mkdir()
@@ -212,6 +251,26 @@ def test_zip_with_extra_entries_skips_nonmatching(tmp_path, run, make_tree):
     # Only the targeted entry is extracted; the other zip member is skipped.
     assert read(out / "outpack" / "rom.bin") == b"rom-contents"
     assert not (out / "outpack" / "other.bin").exists()
+
+
+def test_corrupt_zip_is_reported_but_not_fatal(tmp_path, run, make_tree, line):
+    # A file that looks like a zip (valid end-of-central-directory record) but
+    # cannot actually be opened triggers the "attempted to parse as a zip"
+    # warning; the run still completes successfully.
+    src = tmp_path / "src"
+    src.mkdir()
+    eocd = b"PK\x05\x06" + struct.pack("<HHHHIIH", 0, 0, 1, 1, 46, 0, 0)
+    (src / "corrupt.zip").write_bytes(b"not-a-real-local-header" + eocd)
+    db = tmp_path / "db.txt"
+    write_db(db, [line("outpack/USA/unrelated.bin", "unrelated")])
+    out = tmp_path / "out"
+
+    result = run("build_pack.py",
+                 ["-i", "src", "-d", str(db), "-o", str(out)],
+                 cwd=tmp_path)
+
+    assert result.returncode == 0
+    assert "as a zip archive" in result.stdout
 
 
 def test_missing_file_without_report_flag(tmp_path, run, make_tree, line):
