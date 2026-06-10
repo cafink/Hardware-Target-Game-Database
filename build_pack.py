@@ -10,8 +10,9 @@ import argparse
 import zipfile
 from collections import defaultdict
 from collections import Counter
+from pathlib import Path
 
-import htgdb_common as common
+from htgdb import cli, hashing, progress, smdb
 
 
 __author__ = "aquaman"
@@ -32,7 +33,7 @@ def parse_args(argv=None):
     parser = argparse.ArgumentParser(
         description="use a database to identify and organize files.")
     # Add support for the shared boolean flags.
-    common.register_bool_type(parser)
+    cli.register_bool_type(parser)
 
     parser.add_argument("-i", "--input_folder",
                         dest="source_folder",
@@ -64,14 +65,14 @@ def parse_args(argv=None):
                               "successive files."))
 
     # Valid uses of this flag include: -s, -s true, -s yes, --skip_existing=1
-    common.add_skip_existing_argument(parser)
+    cli.add_skip_existing_argument(parser)
 
     # Valid uses of this flag include: -l, -l true, -l yes, --new_line=1
-    common.add_new_line_argument(parser)
+    cli.add_new_line_argument(parser)
 
     # Valid uses of this flag include: -x, -x true, -x yes,
     # --drop_initial_directory=1
-    common.add_drop_initial_directory_argument(parser)
+    cli.add_drop_initial_directory_argument(parser)
 
     return parser.parse_args(argv)
 
@@ -85,27 +86,29 @@ def write_empty_file(dest, skip_existing):
       skip_existing - Leave an already-present file untouched
     """
 
+    dest_path = Path(dest)
+
     # When destination file exists...
     # Do nothing if skip_existing is set, otherwise remove file (to
     # avoid FileExistsError when writing new file).
-    if os.path.exists(dest):
+    if dest_path.exists():
         if skip_existing:
             return
         else:
-            os.remove(dest)
+            dest_path.unlink()
 
     # Create directories if needed
-    base_dir = os.path.dirname(os.path.abspath(dest))
-    if not os.path.exists(base_dir):
+    base_dir = Path(os.path.abspath(dest)).parent
+    if not base_dir.exists():
         try:
-            os.makedirs(base_dir, exist_ok=True)
+            base_dir.mkdir(parents=True, exist_ok=True)
         except (FileNotFoundError, OSError):
-            fixed_base_dir = u'\\\\?\\' + base_dir
-            os.makedirs(fixed_base_dir, exist_ok=True)
+            # Windows long-path fallback uses the string \\?\ prefix.
+            os.makedirs(u'\\\\?\\' + str(base_dir), exist_ok=True)
 
     # Create empty file
     try:
-        open(dest, 'a').close()
+        dest_path.touch()
     except (FileNotFoundError, OSError):
         fixed_dest = u'\\\\?\\' + os.path.abspath(dest)
         open(fixed_dest, 'a').close()
@@ -140,11 +143,12 @@ def copy_file(source, dest, original, file_strategy, skip_existing):
     # When destination file exists...
     # Do nothing if skip_existing is set, otherwise remove file (to
     # avoid FileExistsError when writing new file).
-    if os.path.exists(dest):
+    dest_path = Path(dest)
+    if dest_path.exists():
         if skip_existing:
             return
         else:
-            os.remove(dest)
+            dest_path.unlink()
 
     try:
         # copy the file to the new directory
@@ -190,19 +194,16 @@ def extract_file(filename, entry, method, dest):
 
 def parse_database(target_database, drop_initial_directory):
     """
-    store hash values and filenames in a database.
+    Store hash values and filenames in a database keyed by both SHA256 and
+    CRC32 (so files can be matched either way, including zip entries).
     """
     db = defaultdict(list)  # missing key's default value is an empty list
     number_of_entries = 0
-    with open(target_database, "r") as target_database:
-        for line in target_database:
-            hash_sha256, filename, _, _, hash_crc = line.strip().split("\t")[0:5]
-            number_of_entries += 1
-            if drop_initial_directory:
-                first_level, filename = filename.split("/", 1)
-            filename = os.path.normpath(filename)
-            db[hash_sha256].append(filename)
-            db[hash_crc].append(filename)
+    for entry in smdb.read_entries(target_database, drop_initial_directory):
+        number_of_entries += 1
+        db[entry.sha256].append(entry.path)
+        if entry.crc32:
+            db[entry.crc32].append(entry.path)
     return db, number_of_entries
 
 
@@ -231,16 +232,15 @@ def parse_folder(source_folder, db, output_folder, file_strategy,
                         loop = 0
                         for entry in db[h]:
                             loop += 1
-                            new_path = os.path.join(output_folder,
-                                                    os.path.dirname(entry))
+                            new_path = Path(output_folder) / Path(entry).parent
                             # create directory structure if need be
-                            if not os.path.exists(new_path):
-                                os.makedirs(new_path, exist_ok=True)
-                            new_file = os.path.join(output_folder, entry)
+                            if not new_path.exists():
+                                new_path.mkdir(parents=True, exist_ok=True)
+                            new_file = Path(output_folder) / entry
                             if loop == 1:
                                 original = new_file
                             if (not skip_existing or not
-                                    os.path.exists(new_file)):
+                                    new_file.exists()):
                                 if info['archive']:
                                     # extract file from archive to directory
                                     extract_file(info['filename'],
@@ -258,11 +258,11 @@ def parse_folder(source_folder, db, output_folder, file_strategy,
                         del db[h]
 
                 i += 1
-                common.print_message(common.format_progress(i, total),
-                                     end_line)
+                progress.print_message(progress.format_progress(i, total),
+                                       end_line)
     else:
         if not new_line:
-            common.print_message(common.format_progress(i, total), "\n")
+            progress.print_message(progress.format_progress(i, total), "\n")
 
 
 def get_hashes(filename):
@@ -274,7 +274,7 @@ def get_hashes(filename):
     hashes = {}
 
     # add the file's own SHA256 hash to dict
-    hashes[common.sha256_file(filename)] = {
+    hashes[hashing.sha256_file(filename)] = {
         'filename': filename,
         'archive': None
     }
@@ -330,7 +330,7 @@ def create_missing_empty_files(db, output_folder, skip_existing):
     """
     if EMPTY_FILE_SHA256 in db and EMPTY_FILE_CRC32 in db:
         for file in db[EMPTY_FILE_CRC32]:
-            empty_file = os.path.join(output_folder, file)
+            empty_file = Path(output_folder) / file
             write_empty_file(empty_file, skip_existing)
 
 
@@ -345,7 +345,7 @@ def collect_missing_files(db, number_of_entries):
     file_counts = Counter([str(i) for i in db.values()])
     duplicate_files = set([str(i) for i in file_counts if file_counts[i] == 2])
 
-    missing_file_list = [(os.path.basename(db[entry][0]), entry)
+    missing_file_list = [(Path(db[entry][0]).name, entry)
                          for entry in db
                          if (str(db[entry]) in duplicate_files
                          and len(entry) == 64)]
@@ -377,7 +377,7 @@ def main(argv=None):
     if missing_file_list:
         missing_file_list.sort()
         if args.missing_files:
-            with open(args.missing_files, "w") as missing_files:
+            with Path(args.missing_files).open("w") as missing_files:
                 for missing_file, entry in missing_file_list:
                     print(missing_file, entry, sep="\t", file=missing_files)
     else:
