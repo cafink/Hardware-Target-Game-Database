@@ -25,7 +25,7 @@ __version__ = "$Revision: 3.7"
 #                                                                      #
 # *********************************************************************#
 
-if __name__ == '__main__':
+def parse_args(argv=None):
     """
     Parse arguments from command line.
     """
@@ -73,22 +73,23 @@ if __name__ == '__main__':
     # --drop_initial_directory=1
     common.add_drop_initial_directory_argument(parser)
 
-    ARGS = parser.parse_args()
+    return parser.parse_args(argv)
 
 
-def write_empty_file(dest):
+def write_empty_file(dest, skip_existing):
     """
     Creates an empty file at the destination path
 
     Arguments:
-      dest - The destination where the empty file will be located
+      dest          - The destination where the empty file will be located
+      skip_existing - Leave an already-present file untouched
     """
 
     # When destination file exists...
     # Do nothing if skip_existing is set, otherwise remove file (to
     # avoid FileExistsError when writing new file).
     if os.path.exists(dest):
-        if ARGS.skip_existing:
+        if skip_existing:
             return
         else:
             os.remove(dest)
@@ -110,35 +111,37 @@ def write_empty_file(dest):
         open(fixed_dest, 'a').close()
 
 
-def copy_file(source, dest, original):
+def copy_file(source, dest, original, file_strategy, skip_existing):
     """
     Copy a file from source to destination using a configurable file copy
     strategy controlled by the --file_strategy command.
 
     Arguments:
-      source   - The file to copy/hardlink
-      dest     - The destination where the new file will be located
-      original - The first file associated with a specific hash value
+      source        - The file to copy/hardlink
+      dest          - The destination where the new file will be located
+      original      - The first file associated with a specific hash value
+      file_strategy - One of "copy", "hardlink" or "smart"
+      skip_existing - Leave an already-present file untouched
     """
 
-    if (ARGS.file_strategy == "copy"):
+    if (file_strategy == "copy"):
         copy_fn = shutil.copyfile
-    elif (ARGS.file_strategy == "hardlink"):
+    elif (file_strategy == "hardlink"):
         copy_fn = os.link
-    elif (ARGS.file_strategy == "smart"):
+    elif (file_strategy == "smart"):
         if original == dest:
             copy_fn = shutil.copyfile
         else:
             copy_fn = os.link
             source = original
     else:
-        raise Exception("Unknown copy strategy {}".format(ARGS.file_strategy))
+        raise Exception(f"Unknown copy strategy {file_strategy}")
 
     # When destination file exists...
     # Do nothing if skip_existing is set, otherwise remove file (to
     # avoid FileExistsError when writing new file).
     if os.path.exists(dest):
-        if ARGS.skip_existing:
+        if skip_existing:
             return
         else:
             os.remove(dest)
@@ -203,7 +206,8 @@ def parse_database(target_database, drop_initial_directory):
     return db, number_of_entries
 
 
-def parse_folder(source_folder, db, output_folder):
+def parse_folder(source_folder, db, output_folder, file_strategy,
+                 skip_existing, end_line, new_line):
     """
     read each file, produce a hash value and place it in the directory tree.
     """
@@ -235,7 +239,7 @@ def parse_folder(source_folder, db, output_folder):
                             new_file = os.path.join(output_folder, entry)
                             if loop == 1:
                                 original = new_file
-                            if (not ARGS.skip_existing or not
+                            if (not skip_existing or not
                                     os.path.exists(new_file)):
                                 if info['archive']:
                                     # extract file from archive to directory
@@ -247,15 +251,17 @@ def parse_folder(source_folder, db, output_folder):
                                     # copy the file to the new directory
                                     copy_file(info['filename'],
                                               new_file,
-                                              original)
+                                              original,
+                                              file_strategy,
+                                              skip_existing)
                         # remove the hit from the database
                         del db[h]
 
                 i += 1
                 common.print_message(common.format_progress(i, total),
-                                     END_LINE)
+                                     end_line)
     else:
-        if not ARGS.new_line:
+        if not new_line:
             common.print_message(common.format_progress(i, total), "\n")
 
 
@@ -306,64 +312,83 @@ def get_hashes(filename):
 #                                                                      #
 # *********************************************************************#
 
-if __name__ == '__main__':
-    SOURCE_FOLDER = ARGS.source_folder
-    TARGET_DATABASE = ARGS.target_database
-    OUTPUT_FOLDER = ARGS.output_folder
-    MISSING_FILES = ARGS.missing_files
-    END_LINE = "\n" if ARGS.new_line else "\r"
-    DROP_INITIAL_DIRECTORY = ARGS.drop_initial_directory
+# An empty file always has the following hashes:
+# SHA256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+# SHA1:   da39a3ee5e6b4b0d3255bfef95601890afd80709
+# MD5SUM: d41d8cd98f00b204e9800998ecf8427e
+# CRC32:  00000000
+EMPTY_FILE_SHA256 = \
+    "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+EMPTY_FILE_CRC32 = "00000000"
 
-    DATABASE, NUMBER_OF_ENTRIES = parse_database(TARGET_DATABASE,
-                                                 DROP_INITIAL_DIRECTORY)
-    parse_folder(SOURCE_FOLDER, DATABASE, OUTPUT_FOLDER)
 
-    # Observed files will have either their SHA256 or their CRC32 entry
-    # deleted (or both) from the database. For missing files, both entries
-    # will still be present. If the hash for an empty file exists as both
-    # SHA256 and CRC32, then it is missing and will be created below.
-    #
-    # For reference, an empty file will always have the following hashes:
-    # SHA256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
-    # SHA1:   da39a3ee5e6b4b0d3255bfef95601890afd80709
-    # MD5SUM: d41d8cd98f00b204e9800998ecf8427e
-    # CRC32:  00000000
-    if (('e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
-            in DATABASE) and ('00000000' in DATABASE)):
-        for file in DATABASE['00000000']:
-            empty_file = os.path.join(OUTPUT_FOLDER, file)
-            write_empty_file(empty_file)
+def create_missing_empty_files(db, output_folder, skip_existing):
+    """
+    Observed files have their SHA256 and/or CRC32 entry removed from the
+    database. A still-present empty-file hash (both SHA256 and CRC32) means
+    the empty file was missing, so it is (re)created here.
+    """
+    if EMPTY_FILE_SHA256 in db and EMPTY_FILE_CRC32 in db:
+        for file in db[EMPTY_FILE_CRC32]:
+            empty_file = os.path.join(output_folder, file)
+            write_empty_file(empty_file, skip_existing)
 
-    # Since missing files will be in the database twice as explained above,
-    # only keep the SHA256 entry (64 char length hash) when listing out the
-    # missing files. This will prevent missing files from being counted more
-    # than once.
-    file_counts = Counter([str(i) for i in DATABASE.values()])
+
+def collect_missing_files(db, number_of_entries):
+    """
+    Return ``(missing_file_list, found_entries)``.
+
+    Missing files appear in the database twice (their SHA256 and CRC32 both
+    survive), so only the 64-character SHA256 entry is kept to avoid counting
+    them more than once.
+    """
+    file_counts = Counter([str(i) for i in db.values()])
     duplicate_files = set([str(i) for i in file_counts if file_counts[i] == 2])
 
-    missing_file_list = [(os.path.basename(DATABASE[entry][0]), entry)
-                         for entry in DATABASE
-                         if (str(DATABASE[entry]) in duplicate_files
+    missing_file_list = [(os.path.basename(db[entry][0]), entry)
+                         for entry in db
+                         if (str(db[entry]) in duplicate_files
                          and len(entry) == 64)]
 
-    missing_entry_count = sum([len(DATABASE[missing_file[1]])
+    missing_entry_count = sum([len(db[missing_file[1]])
                                for missing_file in missing_file_list])
 
-    FOUND_ENTRIES = NUMBER_OF_ENTRIES - missing_entry_count
+    found_entries = number_of_entries - missing_entry_count
+    return missing_file_list, found_entries
+
+
+def main(argv=None):
+    """Entry point: build an organized pack from a source folder and SMDB."""
+    args = parse_args(argv)
+    end_line = "\n" if args.new_line else "\r"
+
+    database, number_of_entries = parse_database(args.target_database,
+                                                 args.drop_initial_directory)
+    parse_folder(args.source_folder, database, args.output_folder,
+                 args.file_strategy, args.skip_existing, end_line,
+                 args.new_line)
+
+    create_missing_empty_files(database, args.output_folder,
+                               args.skip_existing)
+
+    missing_file_list, found_entries = collect_missing_files(
+        database, number_of_entries)
 
     if missing_file_list:
         missing_file_list.sort()
-        if MISSING_FILES:
-            with open(MISSING_FILES, "w") as missing_files:
+        if args.missing_files:
+            with open(args.missing_files, "w") as missing_files:
                 for missing_file, entry in missing_file_list:
                     print(missing_file, entry, sep="\t", file=missing_files)
     else:
         print("no missing file")
 
-    COVERAGE = round(100.0 * FOUND_ENTRIES / NUMBER_OF_ENTRIES, 2)
-    print('coverage: {}/{} ({}%)'.format(FOUND_ENTRIES,
-                                         NUMBER_OF_ENTRIES,
-                                         COVERAGE),
+    coverage = round(100.0 * found_entries / number_of_entries, 2)
+    print(f"coverage: {found_entries}/{number_of_entries} ({coverage}%)",
           file=sys.stdout)
 
-    sys.exit(0)
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

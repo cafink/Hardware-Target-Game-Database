@@ -23,7 +23,7 @@ __version__ = "$Revision: 4.6"
 #                                                                      #
 # *********************************************************************#
 
-def option_parse():
+def parse_args(argv=None):
     """
     Parse arguments from command line.
     """
@@ -45,10 +45,10 @@ def option_parse():
     # Valid uses of this flag include: -l, -l true, -l yes, --new_line=1
     common.add_new_line_argument(parser)
 
-    return parser.parse_args()
+    return parser.parse_args(argv)
 
 
-def parse_folder(target_folder, output_file):
+def parse_folder(target_folder, output_file, end_line, new_line):
     """
     read each file and produce a hash value.
     """
@@ -121,12 +121,24 @@ def parse_folder(target_folder, output_file):
                               file=output_file)
                         i += 1
                         common.print_message(common.format_progress(i),
-                                             END_LINE)
+                                             end_line)
         else:
-            if not args.new_line:
+            if not new_line:
                 common.print_message(common.format_progress(i), "\n")
 
     return None
+
+
+def main(argv=None):
+    """Entry point: parse arguments and produce the SMDB."""
+    args = parse_args(argv)
+    target_folder = args.target_folder
+    output_file = args.output_file
+    end_line = "\n" if args.new_line else "\r"
+    if os.path.lexists(target_folder):
+        target_folder = os.path.normpath(target_folder)
+        parse_folder(target_folder, output_file, end_line, args.new_line)
+    return 0
 
 
 # *********************************************************************#
@@ -136,12 +148,4 @@ def parse_folder(target_folder, output_file):
 # *********************************************************************#
 
 if __name__ == '__main__':
-    args = option_parse()
-    TARGET_FOLDER = args.target_folder
-    OUTPUT_FILE = args.output_file
-    END_LINE = "\n" if args.new_line else "\r"
-    if os.path.lexists(TARGET_FOLDER):
-        TARGET_FOLDER = os.path.normpath(TARGET_FOLDER)
-        parse_folder(TARGET_FOLDER, OUTPUT_FILE)
-
-    sys.exit(0)
+    sys.exit(main())

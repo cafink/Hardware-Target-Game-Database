@@ -22,7 +22,7 @@ __version__ = "$Revision: 1.0"
 #                                                                      #
 # *********************************************************************#
 
-if __name__ == '__main__':
+def parse_args(argv=None):
     """
     Parse arguments from command line.
     """
@@ -53,7 +53,7 @@ if __name__ == '__main__':
     # --drop_initial_directory=1
     common.add_drop_initial_directory_argument(parser)
 
-    ARGS = parser.parse_args()
+    return parser.parse_args(argv)
 
 
 def parse_database(target_database, drop_initial_directory):
@@ -76,7 +76,7 @@ def parse_database(target_database, drop_initial_directory):
     return db, number_of_entries
 
 
-def parse_folder(target_folder, db):
+def parse_folder(target_folder, db, end_line, new_line):
     """
     Read each file, produce a hash value and
      determine if it is in the correct location.
@@ -115,9 +115,9 @@ def parse_folder(target_folder, db):
                 current_file += 1
                 common.print_message(
                     common.format_progress(current_file, total_files),
-                    END_LINE)
+                    end_line)
     else:
-        if not ARGS.new_line:
+        if not new_line:
             common.print_message(
                 common.format_progress(current_file, total_files), "\n")
 
@@ -130,53 +130,66 @@ def parse_folder(target_folder, db):
 #                                                                      #
 # *********************************************************************#
 
-if __name__ == '__main__':
-    TARGET_FOLDER = ARGS.target_folder
-    TARGET_DATABASE = ARGS.target_database
-    MISMATCH_FILES = ARGS.mismatch_files
-    END_LINE = "\n" if ARGS.new_line else "\r"
-    DROP_INITIAL_DIRECTORY = ARGS.drop_initial_directory
+def write_mismatch_report(path, bad_location_files, extra_files,
+                          missing_files):
+    """
+    Write the report of incorrect-location, extra and missing files.
+    Each section is only written when it has entries.
+    """
+    bad_location_files.sort()
+    extra_files.sort()
+    missing_files.sort()
 
-    DATABASE, NUMBER_OF_ENTRIES = parse_database(TARGET_DATABASE,
-                                                 DROP_INITIAL_DIRECTORY)
-    BAD_LOCATION_FILES, EXTRA_FILES = parse_folder(TARGET_FOLDER, DATABASE)
+    with open(path, "w") as mismatch_files:
+        if bad_location_files:
+            print("Incorrect Location Files:", file=mismatch_files)
+            for file, hash_sha256 in bad_location_files:
+                print(os.path.abspath(file), hash_sha256,
+                      sep="\t", file=mismatch_files)
+            print("\n", file=mismatch_files)
 
-    MISSING_FILES = []
-    for key in DATABASE:
-        for file in DATABASE[key]:
-            MISSING_FILES.append((file, key))
+        if extra_files:
+            print("Extra Files:", file=mismatch_files)
+            for file, hash_sha256 in extra_files:
+                print(os.path.abspath(file), hash_sha256,
+                      sep="\t", file=mismatch_files)
+            print("\n", file=mismatch_files)
+
+        if missing_files:
+            print("Missing Files:", file=mismatch_files)
+            for file, hash_sha256 in missing_files:
+                print(file, hash_sha256, sep="\t", file=mismatch_files)
+            print("\n", file=mismatch_files)
+
+
+def main(argv=None):
+    """Entry point: verify a folder against an SMDB and report mismatches."""
+    args = parse_args(argv)
+    end_line = "\n" if args.new_line else "\r"
+
+    database, number_of_entries = parse_database(args.target_database,
+                                                 args.drop_initial_directory)
+    bad_location_files, extra_files = parse_folder(
+        args.target_folder, database, end_line, args.new_line)
+
+    missing_files = []
+    for key in database:
+        for file in database[key]:
+            missing_files.append((file, key))
 
     # write information to log file only if there are any bad, extra
     # or missing files to report
-    if MISMATCH_FILES and (BAD_LOCATION_FILES or EXTRA_FILES or MISSING_FILES):
-        BAD_LOCATION_FILES.sort()
-        EXTRA_FILES.sort()
-        MISSING_FILES.sort()
+    if args.mismatch_files and (bad_location_files or extra_files
+                                or missing_files):
+        write_mismatch_report(args.mismatch_files, bad_location_files,
+                              extra_files, missing_files)
 
-        with open(MISMATCH_FILES, "w") as mismatch_files:
-            if BAD_LOCATION_FILES:
-                print("Incorrect Location Files:", file=mismatch_files)
-                for file, hash_sha256 in BAD_LOCATION_FILES:
-                    print(os.path.abspath(file), hash_sha256,
-                          sep="\t", file=mismatch_files)
-                print("\n", file=mismatch_files)
+    print(f"incorrect location: {len(bad_location_files)}", file=sys.stdout)
+    print(f"extra: {len(extra_files)}", file=sys.stdout)
+    print(f"missing: {len(missing_files)}", file=sys.stdout)
 
-            if EXTRA_FILES:
-                print("Extra Files:", file=mismatch_files)
-                for file, hash_sha256 in EXTRA_FILES:
-                    print(os.path.abspath(file), hash_sha256,
-                          sep="\t", file=mismatch_files)
-                print("\n", file=mismatch_files)
+    return 0
 
-            if MISSING_FILES:
-                print("Missing Files:", file=mismatch_files)
-                for file, hash_sha256 in MISSING_FILES:
-                    print(file, hash_sha256, sep="\t", file=mismatch_files)
-                print("\n", file=mismatch_files)
 
-    print("incorrect location: {}".format(len(BAD_LOCATION_FILES)),
-          file=sys.stdout)
-    print("extra: {}".format(len(EXTRA_FILES)), file=sys.stdout)
-    print("missing: {}".format(len(MISSING_FILES)), file=sys.stdout)
-
-    sys.exit(0)
+if __name__ == '__main__':
+    sys.exit(main())
