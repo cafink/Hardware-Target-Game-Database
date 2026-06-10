@@ -7,8 +7,9 @@ import os
 import sys
 import argparse
 from collections import defaultdict
+from pathlib import Path
 
-import htgdb_common as common
+from htgdb import cli, hashing, progress, smdb
 
 
 __author__ = "Steve Matos (parts by aquaman)"
@@ -29,7 +30,7 @@ def parse_args(argv=None):
     parser = argparse.ArgumentParser(
         description="Use a database to verify files.")
     # Add support for the shared boolean flags.
-    common.register_bool_type(parser)
+    cli.register_bool_type(parser)
 
     parser.add_argument("-f", "--folder",
                         dest="target_folder",
@@ -47,31 +48,24 @@ def parse_args(argv=None):
                         help="list mismatch files")
 
     # Valid uses of this flag include: -l, -l true, -l yes, --new_line=1
-    common.add_new_line_argument(parser)
+    cli.add_new_line_argument(parser)
 
     # Valid uses of this flag include: -x, -x true, -x yes,
     # --drop_initial_directory=1
-    common.add_drop_initial_directory_argument(parser)
+    cli.add_drop_initial_directory_argument(parser)
 
     return parser.parse_args(argv)
 
 
 def parse_database(target_database, drop_initial_directory):
     """
-    Store hash values and filenames in a database.
+    Store hash values and filenames in a database keyed by SHA256.
     """
     db = defaultdict(list)  # missing key's default value is an empty list
     number_of_entries = 0
-    with open(target_database, "r") as target_database:
-        for line in target_database:
-            hash_sha256, filename, other_hash = line.strip().split("\t", 2)
-            number_of_entries += 1
-
-            if drop_initial_directory:
-                first_level, filename = filename.split("/", 1)
-
-            filename = os.path.normpath(filename)
-            db[hash_sha256].append(filename)
+    for entry in smdb.read_entries(target_database, drop_initial_directory):
+        number_of_entries += 1
+        db[entry.sha256].append(entry.path)
 
     return db, number_of_entries
 
@@ -94,9 +88,9 @@ def parse_folder(target_folder, db, end_line, new_line):
                                         os.path.normpath(f))
                 absolute_filename = u'\\\\?\\' + os.path.abspath(filename)
                 try:
-                    hash_sha256 = common.sha256_file(filename)
+                    hash_sha256 = hashing.sha256_file(filename)
                 except FileNotFoundError:
-                    hash_sha256 = common.sha256_file(absolute_filename)
+                    hash_sha256 = hashing.sha256_file(absolute_filename)
 
                 if hash_sha256 in db:
                     rel_path = os.path.relpath(filename, target_folder)
@@ -113,13 +107,13 @@ def parse_folder(target_folder, db, end_line, new_line):
                     extra_files.append((filename, hash_sha256))
 
                 current_file += 1
-                common.print_message(
-                    common.format_progress(current_file, total_files),
+                progress.print_message(
+                    progress.format_progress(current_file, total_files),
                     end_line)
     else:
         if not new_line:
-            common.print_message(
-                common.format_progress(current_file, total_files), "\n")
+            progress.print_message(
+                progress.format_progress(current_file, total_files), "\n")
 
     return bad_location_files, extra_files
 
@@ -140,7 +134,7 @@ def write_mismatch_report(path, bad_location_files, extra_files,
     extra_files.sort()
     missing_files.sort()
 
-    with open(path, "w") as mismatch_files:
+    with Path(path).open("w") as mismatch_files:
         if bad_location_files:
             print("Incorrect Location Files:", file=mismatch_files)
             for file, hash_sha256 in bad_location_files:

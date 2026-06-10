@@ -8,8 +8,9 @@ import os
 import sys
 import time
 import argparse
+from pathlib import Path
 
-import htgdb_common as common
+from htgdb import cli, hashing, progress
 
 
 __author__ = "aquaman"
@@ -30,7 +31,7 @@ def parse_args(argv=None):
     parser = argparse.ArgumentParser(
         description="list file names and produce hash values.")
     # Add support for the shared boolean flags.
-    common.register_bool_type(parser)
+    cli.register_bool_type(parser)
 
     parser.add_argument("-f", "--folder",
                         dest="target_folder",
@@ -43,7 +44,7 @@ def parse_args(argv=None):
                         help="set output file")
 
     # Valid uses of this flag include: -l, -l true, -l yes, --new_line=1
-    common.add_new_line_argument(parser)
+    cli.add_new_line_argument(parser)
 
     return parser.parse_args(argv)
 
@@ -79,7 +80,7 @@ def parse_folder(target_folder, output_file, end_line, new_line):
                        "/os.pce", "/thumbs.db", "/menu.bin", "/desktop.ini",
                        "/.ds_store")  # must be lowercase
 
-    with open(output_file, "w") as output_file:
+    with Path(output_file).open("w") as output_file:
         i = 0
         # make sure subfolders are alphanumerically sorted
         sorted_files = sorted(os.walk(target_folder), key=lambda x: x[0].lower())
@@ -104,11 +105,11 @@ def parse_folder(target_folder, output_file, end_line, new_line):
                     if not (any(s in filename for s in banned_folders) or
                             filename.lower().endswith(banned_suffixes)):
                         try:
-                            digests = common.file_digests(absolute_filename)
+                            digests = hashing.file_digests(absolute_filename)
                         except FileNotFoundError:
                             # Windows default API is limited to paths of
                             # 260 characters
-                            digests = common.file_digests(
+                            digests = hashing.file_digests(
                                 u'\\\\?\\' + absolute_filename)
 
                         print(digests.sha256,
@@ -120,11 +121,11 @@ def parse_folder(target_folder, output_file, end_line, new_line):
                               sep="\t",
                               file=output_file)
                         i += 1
-                        common.print_message(common.format_progress(i),
-                                             end_line)
+                        progress.print_message(progress.format_progress(i),
+                                               end_line)
         else:
             if not new_line:
-                common.print_message(common.format_progress(i), "\n")
+                progress.print_message(progress.format_progress(i), "\n")
 
     return None
 
