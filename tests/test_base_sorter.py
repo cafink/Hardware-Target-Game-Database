@@ -78,6 +78,55 @@ def test_discs_are_grouped_into_per_game_folders(tmp_path, run, make_tree):
     ])
 
 
+def test_debug_output_is_emitted(tmp_path, run, make_tree):
+    games = make_games(make_tree, tmp_path, ["Solo (USA).md"])
+
+    result = run("base_sorter.py", ["-i", ".", "--debug"], cwd=games)
+
+    assert result.returncode == 0
+    # The debug banners and the per-file "Moved" lines are printed.
+    assert "MOVING REVISIONS" in result.stdout
+    assert "Moved" in result.stdout
+
+
+def test_lower_revision_is_set_aside(tmp_path, run, make_tree):
+    # Two numbered revisions of the same game: the lower one is moved into
+    # Revisions, the higher one keeps its (here region-less) categorisation.
+    games = make_games(make_tree, tmp_path, [
+        "Foo (Rev 1).md",
+        "Foo (Rev 2).md",
+    ])
+
+    result = run("base_sorter.py", ["-i", "."], cwd=games)
+
+    assert result.returncode == 0
+    assert relfiles(games) == sorted([
+        "4 Beta, Prototypes, Revisions/Revisions/Foo (Rev 1).md",
+        "2 Other Regions - A-Z/Other Regions - A-F/Foo (Rev 2).md",
+    ])
+
+
+def test_alphabetical_batches_split_on_min_count(tmp_path, run, make_tree):
+    # With a small group-min-count the USA files split into letter batches
+    # whenever the count threshold is met and the leading letter changes.
+    games = make_games(make_tree, tmp_path, [
+        "Aaa (USA).md",
+        "Abb (USA).md",
+        "Ccc (USA).md",
+        "Ddd (USA).md",
+    ])
+
+    result = run("base_sorter.py", ["-i", ".", "-g", "2"], cwd=games)
+
+    assert result.returncode == 0
+    assert relfiles(games) == sorted([
+        "1 USA - A-A/Aaa (USA).md",
+        "1 USA - A-A/Abb (USA).md",
+        "1 USA - C-D/Ccc (USA).md",
+        "1 USA - C-D/Ddd (USA).md",
+    ])
+
+
 def test_file_type_filter_leaves_other_files_untouched(tmp_path, run,
                                                        make_tree):
     games = make_games(make_tree, tmp_path, [
