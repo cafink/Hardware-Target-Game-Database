@@ -1,2 +1,7 @@
 
 EverDrive Pack SMDBs/NT Jailbreak SMDB.txt
+
+# Python / pytest artifacts
+__pycache__/
+*.pyc
+.pytest_cache/
