@@ -8,8 +8,9 @@ import shutil
 import os
 import re
 import sys
+from pathlib import Path
 
-import htgdb_common as common
+from htgdb import cli
 
 __author__ = "BuraBure"
 __date__ = "2022/05/16"
@@ -69,7 +70,7 @@ def parse_args(argv=None):
         description="Game backup basic sorting.")
 
     # Add support for the shared boolean flags.
-    common.register_bool_type(parser)
+    cli.register_bool_type(parser)
 
     parser.add_argument("--debug",
                         dest="debug",
@@ -115,7 +116,8 @@ def debug_banner(msg, debug):
 
 
 def get_file_list(directory, file_type):
-    files = sorted(os.listdir(directory), key=str.lower)
+    files = sorted((entry.name for entry in Path(directory).iterdir()),
+                   key=str.lower)
     reserved_dir_regex = '|'.join(RESERVED_DIRS)
     safe_files = filter(lambda file: False if re.search(
         reserved_dir_regex, file) else True, files)
@@ -150,13 +152,13 @@ def move_disc_files(file_list, destination, debug):
     Groups discs into folders and Moves them to a destination
     """
     for file in file_list:
-        (_, filename) = os.path.split(file)
-        (extensionless, _) = os.path.splitext(filename)
+        filename = os.path.basename(file)
+        extensionless = Path(filename).stem
         discless_match = re.search(DISC_REGEX, filename)
         discless_name = discless_match.group(
             1) if discless_match != None else extensionless
-        disc_dir = os.path.join(destination, discless_name)
-        os.makedirs(disc_dir, mode=511, exist_ok=True)
+        disc_dir = Path(destination) / discless_name
+        disc_dir.mkdir(mode=511, parents=True, exist_ok=True)
         __move_files(file, disc_dir, debug)
 
 
@@ -187,17 +189,18 @@ def move_revisions(source_dir, options):
     files = get_file_list(source_dir, options.file_type)
     prev_file = ''
     early_revisions = []
-    revisions_dir = os.path.abspath(
-        os.path.join(source_dir, REVISIONS_DIR))
+    # source_dir is already absolute, so this stays absolute too.
+    revisions_dir = Path(source_dir) / REVISIONS_DIR
 
     for file in files:
+        # file_abs stays a string: it is matched by the revision regexes.
         file_abs = os.path.join(source_dir, file)
         if is_revision(prev_file, file_abs):
             early_revisions.append(
                 get_earlier_revision(prev_file, file_abs))
         prev_file = file_abs
 
-    os.makedirs(revisions_dir, mode=511, exist_ok=True)
+    revisions_dir.mkdir(mode=511, parents=True, exist_ok=True)
     move_files(early_revisions, revisions_dir, options.debug, options.discs)
 
 
@@ -233,9 +236,10 @@ def move_files_conditionally(source_dir, destination_dir, predicate_fn,
     files = get_file_list(source_dir, options.file_type)
     abs_paths = []
 
-    os.makedirs(destination_dir, mode=511, exist_ok=True)
+    Path(destination_dir).mkdir(mode=511, parents=True, exist_ok=True)
 
     for file in files:
+        # file_abs stays a string: it is matched by the region regexes.
         file_abs = os.path.join(source_dir, file)
         if predicate_fn(file_abs):
             abs_paths.append(file_abs)
@@ -247,10 +251,9 @@ def move_alphabetical_batch(batch, base_dir, dir_prefix, batch_starting_letter, 
     batch_dir_name = dir_prefix + ' - ' + \
         batch_starting_letter + '-' + batch_ending_letter
 
-    batch_dir_path = os.path.abspath(
-        os.path.join(base_dir, batch_dir_name))
+    batch_dir_path = Path(base_dir) / batch_dir_name
 
-    os.makedirs(batch_dir_path, mode=511, exist_ok=True)
+    batch_dir_path.mkdir(mode=511, parents=True, exist_ok=True)
     move_files(batch, batch_dir_path, debug, False)
 
 
@@ -263,7 +266,7 @@ def group_files_alphabetically(base_dir, dir_prefix, options,
     batch = []
     prev_file_name = '0'
     batch_starting_letter = 'A'
-    destination_dir = base_dir if destination_dir == None else destination_dir
+    destination_dir = base_dir if destination_dir is None else destination_dir
 
     for file in files:
         file_abs = os.path.join(base_dir, file)
@@ -290,51 +293,49 @@ def group_files_alphabetically(base_dir, dir_prefix, options,
 def main(argv=None):
     """Entry point: sort a folder of game backups in place."""
     options = parse_args(argv)
-    source_dir = os.path.abspath(options.source_dir)
+    source_dir = Path(os.path.abspath(options.source_dir))
 
     debug_banner('MOVING REVISIONS', options.debug)
     move_revisions(source_dir, options)
 
     debug_banner('MOVING BETAS', options.debug)
-    move_files_conditionally(source_dir, os.path.abspath(
-        os.path.join(source_dir, BETAS_DIR)), is_beta, options)
+    move_files_conditionally(source_dir, source_dir / BETAS_DIR,
+                             is_beta, options)
 
     debug_banner('MOVING DEMOS', options.debug)
-    move_files_conditionally(source_dir, os.path.abspath(
-        os.path.join(source_dir, DEMOS_DIR)), is_demo, options)
+    move_files_conditionally(source_dir, source_dir / DEMOS_DIR,
+                             is_demo, options)
 
     debug_banner('MOVING USA', options.debug)
-    move_files_conditionally(source_dir, os.path.abspath(
-        os.path.join(source_dir, USA_TMP_DIR)), is_USA, options)
+    move_files_conditionally(source_dir, source_dir / USA_TMP_DIR,
+                             is_USA, options)
 
     debug_banner('MOVING JAPAN', options.debug)
-    move_files_conditionally(source_dir, os.path.abspath(
-        os.path.join(source_dir, JAPAN_DIR)), is_Japan, options)
+    move_files_conditionally(source_dir, source_dir / JAPAN_DIR,
+                             is_Japan, options)
 
     debug_banner('MOVING EUROPE', options.debug)
-    move_files_conditionally(source_dir, os.path.abspath(
-        os.path.join(source_dir, EUROPE_DIR)), is_Europe, options)
+    move_files_conditionally(source_dir, source_dir / EUROPE_DIR,
+                             is_Europe, options)
 
     debug_banner('MOVING OTHER REGIONS', options.debug)
-    move_files_conditionally(source_dir, os.path.abspath(
-        os.path.join(source_dir, OTHERS_DIR)), is_other_regions, options)
+    move_files_conditionally(source_dir, source_dir / OTHERS_DIR,
+                             is_other_regions, options)
 
     debug_banner('GROUPING USA', options.debug)
-    usa_tmp_dir_abs = os.path.join(source_dir, USA_TMP_DIR)
+    usa_tmp_dir_abs = source_dir / USA_TMP_DIR
     group_files_alphabetically(usa_tmp_dir_abs, '1 USA', options, source_dir)
-    os.rmdir(usa_tmp_dir_abs)
+    usa_tmp_dir_abs.rmdir()
 
     debug_banner('GROUPING JAPAN', options.debug)
-    group_files_alphabetically(os.path.abspath(
-        os.path.join(source_dir, JAPAN_DIR)), 'Japan', options)
+    group_files_alphabetically(source_dir / JAPAN_DIR, 'Japan', options)
 
     debug_banner('GROUPING EUROPE', options.debug)
-    group_files_alphabetically(os.path.abspath(
-        os.path.join(source_dir, EUROPE_DIR)), 'Europe', options)
+    group_files_alphabetically(source_dir / EUROPE_DIR, 'Europe', options)
 
     debug_banner('GROUPING OTHER REGIONS', options.debug)
-    group_files_alphabetically(os.path.abspath(
-        os.path.join(source_dir, OTHERS_DIR)), 'Other Regions', options)
+    group_files_alphabetically(source_dir / OTHERS_DIR, 'Other Regions',
+                               options)
 
     return 0
 
