@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hardware-target-game-database-tools"
+version = "0.1.0"
+description = "Tools to create, build and verify Hardware Target Game Database (SMDB) packs."
+readme = "README.md"
+requires-python = ">=3.8"
+license = { file = "LICENSE" }
+
+[project.scripts]
+parse-pack = "parse_pack:main"
+build-pack = "build_pack:main"
+verify-pack = "verify_pack:main"
+base-sorter = "base_sorter:main"
+
+[tool.setuptools]
+# The shared library lives in the htgdb package; the four entry points stay
+# as top-level modules so they can also be run directly as scripts.
+packages = ["htgdb"]
+py-modules = ["parse_pack", "build_pack", "verify_pack", "base_sorter"]
