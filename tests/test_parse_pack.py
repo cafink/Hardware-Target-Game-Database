@@ -88,6 +88,20 @@ def test_banned_suffixes_are_excluded(tmp_path, run, make_tree, line):
     assert read(out) == line("pack/game.bin", "game") + "\n"
 
 
+def test_new_line_flag_still_produces_correct_smdb(tmp_path, run, make_tree,
+                                                   line):
+    # -l/--new_line only changes how progress is printed (it takes the
+    # "skip the trailing progress line" branch); the SMDB must be identical.
+    make_tree(tmp_path, {"pack": {"a.bin": "aaa"}})
+    out = tmp_path / "out.txt"
+
+    result = run("parse_pack.py",
+                 ["-f", "pack", "-o", str(out), "-l"], cwd=tmp_path)
+
+    assert result.returncode == 0
+    assert read(out) == line("pack/a.bin", "aaa") + "\n"
+
+
 def test_missing_target_folder_writes_nothing(tmp_path, run):
     out = tmp_path / "out.txt"
 
