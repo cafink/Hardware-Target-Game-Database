@@ -111,6 +111,128 @@ def test_extract_from_zip_archive(tmp_path, run, make_tree):
     assert read(out / "outpack" / "USA" / "rom.bin") == b"rom-contents"
 
 
+def test_smart_strategy_hardlinks_duplicates(tmp_path, run, make_tree, line):
+    # One source file maps to two destinations with the same hash: the first
+    # is copied, the second is hardlinked to that first copy.
+    make_tree(tmp_path, {"src": {"dup.bin": "dup"}})
+    db = tmp_path / "db.txt"
+    write_db(db, [
+        line("outpack/USA/a.bin", "dup"),
+        line("outpack/USA/b.bin", "dup"),
+    ])
+    out = tmp_path / "out"
+
+    result = run("build_pack.py",
+                 ["-i", "src", "-d", str(db), "-o", str(out),
+                  "--file_strategy", "smart"],
+                 cwd=tmp_path)
+
+    assert result.returncode == 0
+    first = out / "outpack" / "USA" / "a.bin"
+    second = out / "outpack" / "USA" / "b.bin"
+    assert read(first) == b"dup"
+    assert read(second) == b"dup"
+    assert os.path.samefile(str(first), str(second))
+
+
+def test_existing_file_overwritten_without_skip(tmp_path, run, make_tree,
+                                                line):
+    make_tree(tmp_path, {
+        "src": {"a.bin": "aaa"},
+        "out": {"outpack": {"USA": {"a.bin": "stale"}}},
+    })
+    db = tmp_path / "db.txt"
+    write_db(db, [line("outpack/USA/a.bin", "aaa")])
+    out = tmp_path / "out"
+
+    result = run("build_pack.py",
+                 ["-i", "src", "-d", str(db), "-o", str(out)],
+                 cwd=tmp_path)
+
+    assert result.returncode == 0
+    # Without --skip_existing the stale file is replaced.
+    assert read(out / "outpack" / "USA" / "a.bin") == b"aaa"
+
+
+def test_drop_initial_directory(tmp_path, run, make_tree, line):
+    make_tree(tmp_path, {"src": {"a.bin": "aaa"}})
+    db = tmp_path / "db.txt"
+    write_db(db, [line("topdir/USA/a.bin", "aaa")])
+    out = tmp_path / "out"
+
+    result = run("build_pack.py",
+                 ["-i", "src", "-d", str(db), "-o", str(out), "-x"],
+                 cwd=tmp_path)
+
+    assert result.returncode == 0
+    # The leading "topdir/" component is dropped from the output layout.
+    assert read(out / "USA" / "a.bin") == b"aaa"
+    assert not (out / "topdir").exists()
+
+
+def test_creates_missing_empty_file(tmp_path, run, make_tree, line):
+    # An SMDB entry for an empty file that is absent from the source is
+    # recreated as an empty file. The empty sub-folder exercises the
+    # "directory with no files" walk branch.
+    make_tree(tmp_path, {"src": {"keep.bin": "x", "sub": {}}})
+    db = tmp_path / "db.txt"
+    write_db(db, [line("outpack/empty.bin", "")])
+    out = tmp_path / "out"
+
+    result = run("build_pack.py",
+                 ["-i", "src", "-d", str(db), "-o", str(out)],
+                 cwd=tmp_path)
+
+    assert result.returncode == 0
+    empty = out / "outpack" / "empty.bin"
+    assert empty.exists()
+    assert empty.stat().st_size == 0
+
+
+def test_zip_with_extra_entries_skips_nonmatching(tmp_path, run, make_tree):
+    src = tmp_path / "src"
+    src.mkdir()
+    zip_path = src / "games.zip"
+    with zipfile.ZipFile(str(zip_path), "w") as zf:
+        zf.writestr("rom.bin", "rom-contents")
+        zf.writestr("other.bin", "other-contents")
+    with zipfile.ZipFile(str(zip_path)) as zf:
+        crc = "{0:08x}".format(zf.getinfo("rom.bin").CRC & 0xffffffff)
+
+    db = tmp_path / "db.txt"
+    write_db(db, ["\t".join(["0" * 64, "outpack/rom.bin",
+                             "0" * 40, "0" * 32, crc, "12"])])
+    out = tmp_path / "out"
+
+    result = run("build_pack.py",
+                 ["-i", "src", "-d", str(db), "-o", str(out)],
+                 cwd=tmp_path)
+
+    assert result.returncode == 0
+    # Only the targeted entry is extracted; the other zip member is skipped.
+    assert read(out / "outpack" / "rom.bin") == b"rom-contents"
+    assert not (out / "outpack" / "other.bin").exists()
+
+
+def test_missing_file_without_report_flag(tmp_path, run, make_tree, line):
+    make_tree(tmp_path, {"src": {"a.bin": "aaa"}})
+    db = tmp_path / "db.txt"
+    write_db(db, [
+        line("outpack/USA/a.bin", "aaa"),
+        line("outpack/USA/gone.bin", "gone"),
+    ])
+    out = tmp_path / "out"
+
+    # No -m flag: the missing file is reflected in coverage but no report
+    # file is written.
+    result = run("build_pack.py",
+                 ["-i", "src", "-d", str(db), "-o", str(out)],
+                 cwd=tmp_path)
+
+    assert result.returncode == 0
+    assert "coverage: 1/2 (50.0%)" in result.stdout
+
+
 def test_skip_existing_leaves_file_untouched(tmp_path, run, make_tree, line):
     make_tree(tmp_path, {
         "src": {"a.bin": "aaa"},
