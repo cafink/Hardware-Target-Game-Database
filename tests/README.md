@@ -62,3 +62,18 @@ coverage report                              # text summary (or: coverage html)
 `COVERAGE_FILE` must be an absolute path: each test runs the script from a
 temporary working directory, and without it the data files would be written
 into (and lost with) those temp dirs.
+
+### Current coverage
+
+Roughly **93%** of statements (branch coverage enabled). The lines that
+remain uncovered are deliberately out of scope:
+
+- **Windows long-path fallbacks** — the `\\?\`-prefixed `FileNotFoundError` /
+  `OSError` retry paths in every script. They cannot run on Linux/macOS.
+- **`if __name__ == '__main__'` guard branches** — only taken when a module is
+  *imported* rather than executed, which the subprocess tests never do.
+- **Unreachable defensive code** — e.g. build_pack's `raise` for an unknown
+  `--file_strategy` (argparse already restricts the choices) and its non-`zip`
+  branch in `extract_file` (only `zip` is ever passed).
+- **parse_pack's non-ASCII filename handler** — reachable, but it calls
+  `time.sleep(10)`, so exercising it would add a 10-second hang to the suite.
