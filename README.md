@@ -152,7 +152,7 @@ trying the GUI version.
 
 ## Requirements
 
-[python](https://www.python.org) 3.5 or newer
+[python](https://www.python.org) 3.8 or newer
 
 Linux, MacOS, or Windows
 
@@ -164,6 +164,13 @@ Scripts and code by
 patches by [@eatnumber1](https://github.com/eatnumber1),
 [@coughlanio](https://github.com/coughlanio)
 and [@Slashbunny](https://github.com/Slashbunny).
+
+Shared logic (argument parsing, hashing, progress reporting and SMDB
+reading) lives in the `htgdb` package; the four command-line tools
+(`parse_pack.py`, `build_pack.py`, `verify_pack.py`, `base_sorter.py`) are
+thin front-ends over it, each exposing a `main()` entry point. The test
+suite lives under `tests/` — see `tests/README.md` for how to run it and
+measure coverage.
 
 EverDrive Pack SMDB layouts by
 [@SmokeMonsterPacks](https://github.com/SmokeMonsterPacks).

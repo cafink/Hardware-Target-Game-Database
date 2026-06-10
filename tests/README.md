@@ -65,8 +65,9 @@ into (and lost with) those temp dirs.
 
 ### Current coverage
 
-Roughly **93%** of statements (branch coverage enabled). The lines that
-remain uncovered are deliberately out of scope:
+Roughly **95%** of statements (branch coverage enabled); the shared `htgdb`
+package modules are at 100%. The lines that remain uncovered are deliberately
+out of scope:
 
 - **Windows long-path fallbacks** — the `\\?\`-prefixed `FileNotFoundError` /
   `OSError` retry paths in every script. They cannot run on Linux/macOS.
