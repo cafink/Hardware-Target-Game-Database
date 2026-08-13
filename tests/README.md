@@ -74,7 +74,12 @@ out of scope:
 - **`if __name__ == '__main__'` guard branches** — only taken when a module is
   *imported* rather than executed, which the subprocess tests never do.
 - **Unreachable defensive code** — e.g. build_pack's `raise` for an unknown
-  `--file_strategy` (argparse already restricts the choices) and its non-`zip`
-  branch in `extract_file` (only `zip` is ever passed).
+  `--file_strategy` (argparse already restricts the choices), and the
+  `if archive:` guard in `extract_file` (only called on a filename
+  `get_hashes()` already confirmed to be a valid archive).
+- **`BaseArchive` abstract-method stubs** — `get_entries` and
+  `extract_entry` both just `raise NotImplementedError`. `BaseArchive`
+  is never instantiated directly, so these methods never run by
+  design; subclasses always override them.
 - **parse_pack's non-ASCII filename handler** — reachable, but it calls
   `time.sleep(10)`, so exercising it would add a 10-second hang to the suite.

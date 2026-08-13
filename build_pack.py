@@ -166,15 +166,30 @@ def copy_file(source, dest, original, file_strategy, skip_existing):
             shutil.copyfile(source, fixed_dest)
 
 
-def extract_file(filename, entry, method, dest):
-    """
-    extracts entry from archive to given destination directory
-    """
-    if method == 'zip':
+class BaseArchive:
+    def __init__(self, filename):
+        self.filename = filename
+
+    def get_entries(self):
+        """Yields (entry_name, crc32_hex)"""
+        raise NotImplementedError
+
+    def extract_entry(self, entry, dest):
+        """Extracts a specific entry to the destination path"""
+        raise NotImplementedError
+
+
+class ZipArchive(BaseArchive):
+    def get_entries(self):
+        with zipfile.ZipFile(self.filename, 'r') as z:
+            for info in z.infolist():
+                yield info.filename, '{0:08x}'.format(info.CRC & 0xffffffff)
+
+    def extract_entry(self, entry, dest):
         # Stolen shamelessly from https://stackoverflow.com/a/4917469
         # Eliminates the random directories that appear when a file is
         # extracted from a zip file
-        with zipfile.ZipFile(filename) as zip_file:
+        with zipfile.ZipFile(self.filename) as zip_file:
             for member in zip_file.namelist():
                 # skip other files in the zip
                 if member != entry:
@@ -190,6 +205,21 @@ def extract_file(filename, entry, method, dest):
                 target = open(dest, "wb")
                 with source, target:
                     shutil.copyfileobj(source, target)
+
+
+def get_archive_handler(filename):
+    if zipfile.is_zipfile(filename):
+        return ZipArchive(filename)
+    return None
+
+
+def extract_file(filename, entry, method, dest):
+    """
+    extracts entry from archive to given destination directory
+    """
+    archive = get_archive_handler(filename)
+    if archive:
+        archive.extract_entry(entry, dest)
 
 
 def parse_database(target_database, drop_initial_directory):
@@ -279,20 +309,17 @@ def get_hashes(filename):
         'archive': None
     }
 
-    # if this is a zipfile, extract CRCs from header
-    if zipfile.is_zipfile(filename):
+    archive = get_archive_handler(filename)
+    if archive:
         try:
-            with zipfile.ZipFile(filename, 'r') as z:
-                for info in z.infolist():
-                    # add archive entry hash to dict
-                    crc_formatted_hex = '{0:08x}'.format(info.CRC & 0xffffffff)
-                    hashes[crc_formatted_hex] = {
-                        'filename': filename,
-                        'archive': {
-                            'entry': info.filename,
-                            'type': 'zip'
-                        }
+            for name, crc in archive.get_entries():
+                hashes[crc] = {
+                    'filename': filename,
+                    'archive': {
+                        'entry': name,
+                        'type': 'zip'
                     }
+                }
         except (OSError, UnicodeDecodeError, zipfile.BadZipFile):
             # Possible normal file containing a zip magic number?
             print('**** ERROR ****')
