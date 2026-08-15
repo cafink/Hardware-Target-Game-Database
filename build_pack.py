@@ -8,6 +8,8 @@ import sys
 import shutil
 import argparse
 import zipfile
+import tempfile
+import py7zr
 from collections import defaultdict
 from collections import Counter
 from pathlib import Path
@@ -167,6 +169,8 @@ def copy_file(source, dest, original, file_strategy, skip_existing):
 
 
 class BaseArchive:
+    archive_type = None
+
     def __init__(self, filename):
         self.filename = filename
 
@@ -180,6 +184,8 @@ class BaseArchive:
 
 
 class ZipArchive(BaseArchive):
+    archive_type = 'zip'
+
     def get_entries(self):
         with zipfile.ZipFile(self.filename, 'r') as z:
             for info in z.infolist():
@@ -207,9 +213,28 @@ class ZipArchive(BaseArchive):
                     shutil.copyfileobj(source, target)
 
 
+class SevenZipArchive(BaseArchive):
+    archive_type = '7z'
+
+    def get_entries(self):
+        with py7zr.SevenZipFile(self.filename) as z:
+            for name in z.getnames():
+                yield name, f"{z.getinfo(name).crc32:08x}"
+
+    def extract_entry(self, entry, dest):
+        with py7zr.SevenZipFile(self.filename) as z:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                z.extract(path=tmpdir, targets=[entry])
+                extracted_file = Path(tmpdir) / entry
+                with open(extracted_file, "rb") as source, open(dest, "wb") as target:
+                    shutil.copyfileobj(source, target)
+
+
 def get_archive_handler(filename):
     if zipfile.is_zipfile(filename):
         return ZipArchive(filename)
+    elif py7zr.is_7zfile(filename):
+        return SevenZipArchive(filename)
     return None
 
 
@@ -317,17 +342,18 @@ def get_hashes(filename):
                     'filename': filename,
                     'archive': {
                         'entry': name,
-                        'type': 'zip'
+                        'type': archive.archive_type
                     }
                 }
         except (OSError, UnicodeDecodeError, zipfile.BadZipFile):
-            # Possible normal file containing a zip magic number?
-            print('**** ERROR ****')
-            print('**** Attempted to parse {} as a zip archive.'.format(
-                  filename))
-            print('**** If this file is not a zip archive, you may safely'
-                  ' ignore this error.')
-            print('***************')
+            if isinstance(archive, ZipArchive):
+                # Possible normal file containing a zip magic number?
+                print('**** ERROR ****')
+                print('**** Attempted to parse {} as a zip archive.'.format(
+                      filename))
+                print('**** If this file is not a zip archive, you may safely'
+                      ' ignore this error.')
+                print('***************')
             pass
 
     return hashes

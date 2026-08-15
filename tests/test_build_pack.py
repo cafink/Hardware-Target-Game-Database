@@ -14,6 +14,7 @@ their crc, so the fixtures use full 6-column SMDB lines.
 import os
 import struct
 import zipfile
+import py7zr
 
 
 def write_db(path, lines):
@@ -271,6 +272,30 @@ def test_corrupt_zip_is_reported_but_not_fatal(tmp_path, run, make_tree, line):
 
     assert result.returncode == 0
     assert "as a zip archive" in result.stdout
+
+
+def test_extract_from_7z_archive(tmp_path, run, make_tree):
+    src = tmp_path / "src"
+    src.mkdir()
+    sz_path = src / "games.7z"
+    rom_file = tmp_path / "rom.bin"
+    rom_file.write_bytes(b"7z-rom-contents")
+    with py7zr.SevenZipFile(str(sz_path), "w") as szf:
+        szf.write(str(rom_file), arcname="rom.bin")
+    with py7zr.SevenZipFile(str(sz_path)) as szf:
+        crc = "{0:08x}".format(szf.getinfo("rom.bin").crc32)
+
+    db = tmp_path / "db.txt"
+    write_db(db, ["\t".join(["0" * 64, "outpack/rom.bin",
+                             "0" * 40, "0" * 32, crc, "15"])])
+    out = tmp_path / "out"
+
+    result = run("build_pack.py",
+                 ["-i", "src", "-d", str(db), "-o", str(out)],
+                 cwd=tmp_path)
+
+    assert result.returncode == 0
+    assert read(out / "outpack" / "rom.bin") == b"7z-rom-contents"
 
 
 def test_missing_file_without_report_flag(tmp_path, run, make_tree, line):
