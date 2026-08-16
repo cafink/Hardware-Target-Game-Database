@@ -27,7 +27,7 @@ expected SMDB lines are computed from the fixture content (see the helpers in
 |------------------|------------------------|-------------------------------------------------------------------------|
 | `parse_pack.py`  | `test_parse_pack.py`   | SMDB contents/format, case-insensitive walk order, banned folders/suffixes |
 | `verify_pack.py` | `test_verify_pack.py`  | correct / extra / missing / misplaced counts, mismatch report sections  |
-| `build_pack.py`  | `test_build_pack.py`   | copy & hardlink strategies, zip/7z extraction, missing report, skip-existing |
+| `build_pack.py`  | `test_build_pack.py`   | copy & hardlink strategies, zip/7z extraction, corrupt-archive handling, missing report, skip-existing |
 | `base_sorter.py` | `test_base_sorter.py`  | region/type sorting layout, disc grouping, file-type filter             |
 
 ## Running
@@ -78,7 +78,7 @@ out of scope:
   `--file_strategy` (argparse already restricts the choices), and the
   `if archive:` guard in `extract_file` (only called on a filename
   `get_hashes()` already confirmed to be a valid archive).
-- **`BaseArchive` abstract-method stubs** — `get_entries` and
+- **`BaseArchive` abstract-method stubs** — `_read_entries` and
   `extract_entry` both just `raise NotImplementedError`. `BaseArchive`
   is never instantiated directly, so these methods never run by
   design; subclasses always override them.
