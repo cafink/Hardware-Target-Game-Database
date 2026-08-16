@@ -7,6 +7,7 @@ import os
 import sys
 import shutil
 import argparse
+import struct
 import zipfile
 import tempfile
 import py7zr
@@ -170,23 +171,40 @@ def copy_file(source, dest, original, file_strategy, skip_existing):
 
 class BaseArchive:
     archive_type = None
+    # Exceptions we should handle internally rather than letting propagate.
+    handled_exceptions = (OSError,)
 
     def __init__(self, filename):
         self.filename = filename
 
     def get_entries(self):
-        """Yields (entry_name, crc32_hex)"""
+        """Yields (entry_name, crc32_hex), handling known failure modes
+        internally."""
+        try:
+            yield from self._read_entries()
+        except self.handled_exceptions:
+            self.handle_error()
+
+    def _read_entries(self):
+        """Subclasses implement the actual per-format parsing/iteration."""
         raise NotImplementedError
 
     def extract_entry(self, entry, dest):
         """Extracts a specific entry to the destination path"""
         raise NotImplementedError
 
+    def handle_error(self):
+        """Report a failure caught via handled_exceptions. No-op by
+        default; subclasses can override to warn the user as needed (e.g. an
+        erroneously detected archive type)."""
+        pass
+
 
 class ZipArchive(BaseArchive):
     archive_type = 'zip'
+    handled_exceptions = (OSError, UnicodeDecodeError, zipfile.BadZipFile)
 
-    def get_entries(self):
+    def _read_entries(self):
         with zipfile.ZipFile(self.filename, 'r') as z:
             for info in z.infolist():
                 yield info.filename, '{0:08x}'.format(info.CRC & 0xffffffff)
@@ -212,11 +230,24 @@ class ZipArchive(BaseArchive):
                 with source, target:
                     shutil.copyfileobj(source, target)
 
+    def handle_error(self):
+        # Possible normal file containing a zip magic number?
+        print('**** ERROR ****')
+        print('**** Attempted to parse {} as a zip archive.'.format(
+              self.filename))
+        print('**** If this file is not a zip archive, you may safely'
+              ' ignore this error.')
+        print('***************')
+
 
 class SevenZipArchive(BaseArchive):
     archive_type = '7z'
+    # py7zr's header parser can raise a bare struct.error (rather than one
+    # of its own ArchiveError subclasses) on a truncated/corrupt file.
+    handled_exceptions = (OSError, py7zr.exceptions.ArchiveError,
+                          struct.error)
 
-    def get_entries(self):
+    def _read_entries(self):
         with py7zr.SevenZipFile(self.filename) as z:
             for name in z.getnames():
                 yield name, f"{z.getinfo(name).crc32:08x}"
@@ -228,6 +259,18 @@ class SevenZipArchive(BaseArchive):
                 extracted_file = Path(tmpdir) / entry
                 with open(extracted_file, "rb") as source, open(dest, "wb") as target:
                     shutil.copyfileobj(source, target)
+
+    def handle_error(self):
+        # Unlike zip's end-of-central-directory scan, py7zr's is_7zfile()
+        # check is an exact magic-number match, so a false positive is very
+        # unlikely. A failure therefore almost certainly indicates that the file
+        # is corrupt or uses an unsupported feature.
+        print('**** ERROR ****')
+        print('**** Failed to read {} as a 7z archive.'.format(
+              self.filename))
+        print('**** The file may be corrupt or use an unsupported feature '
+              '(e.g. encryption).')
+        print('***************')
 
 
 def get_archive_handler(filename):
@@ -336,25 +379,14 @@ def get_hashes(filename):
 
     archive = get_archive_handler(filename)
     if archive:
-        try:
-            for name, crc in archive.get_entries():
-                hashes[crc] = {
-                    'filename': filename,
-                    'archive': {
-                        'entry': name,
-                        'type': archive.archive_type
-                    }
+        for name, crc in archive.get_entries():
+            hashes[crc] = {
+                'filename': filename,
+                'archive': {
+                    'entry': name,
+                    'type': archive.archive_type
                 }
-        except (OSError, UnicodeDecodeError, zipfile.BadZipFile):
-            if isinstance(archive, ZipArchive):
-                # Possible normal file containing a zip magic number?
-                print('**** ERROR ****')
-                print('**** Attempted to parse {} as a zip archive.'.format(
-                      filename))
-                print('**** If this file is not a zip archive, you may safely'
-                      ' ignore this error.')
-                print('***************')
-            pass
+            }
 
     return hashes
 

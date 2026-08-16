@@ -274,6 +274,26 @@ def test_corrupt_zip_is_reported_but_not_fatal(tmp_path, run, make_tree, line):
     assert "as a zip archive" in result.stdout
 
 
+def test_corrupt_7z_is_reported_but_not_fatal(tmp_path, run, make_tree, line):
+    # A file with a genuine 7z magic number but garbage after it triggers
+    # the "failed to read as a 7z archive" warning; the run still
+    # completes successfully.
+    src = tmp_path / "src"
+    src.mkdir()
+    magic = b"7z\xbc\xaf\x27\x1c"
+    (src / "corrupt.7z").write_bytes(magic + b"not-a-real-header")
+    db = tmp_path / "db.txt"
+    write_db(db, [line("outpack/USA/unrelated.bin", "unrelated")])
+    out = tmp_path / "out"
+
+    result = run("build_pack.py",
+                 ["-i", "src", "-d", str(db), "-o", str(out)],
+                 cwd=tmp_path)
+
+    assert result.returncode == 0
+    assert "as a 7z archive" in result.stdout
+
+
 def test_extract_from_7z_archive(tmp_path, run, make_tree):
     src = tmp_path / "src"
     src.mkdir()
