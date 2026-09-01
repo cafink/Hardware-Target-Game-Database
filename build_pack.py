@@ -285,9 +285,10 @@ def extract_file(filename, entry, method, dest):
     """
     extracts entry from archive to given destination directory
     """
-    archive = get_archive_handler(filename)
-    if archive:
-        archive.extract_entry(entry, dest)
+    archive_classes = {'zip': ZipArchive, '7z': SevenZipArchive}
+    if method not in archive_classes:
+        raise ValueError(f"Unknown archive method {method!r}")
+    archive_classes[method](filename).extract_entry(entry, dest)
 
 
 def parse_database(target_database, drop_initial_directory):

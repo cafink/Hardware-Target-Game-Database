@@ -75,9 +75,7 @@ out of scope:
 - **`if __name__ == '__main__'` guard branches** — only taken when a module is
   *imported* rather than executed, which the subprocess tests never do.
 - **Unreachable defensive code** — e.g. build_pack's `raise` for an unknown
-  `--file_strategy` (argparse already restricts the choices), and the
-  `if archive:` guard in `extract_file` (only called on a filename
-  `get_hashes()` already confirmed to be a valid archive).
+  `--file_strategy` (argparse already restricts the choices).
 - **`BaseArchive` abstract-method stubs** — `_read_entries` and
   `extract_entry` both just `raise NotImplementedError`. `BaseArchive`
   is never instantiated directly, so these methods never run by
