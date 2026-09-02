@@ -76,8 +76,8 @@ out of scope:
   *imported* rather than executed, which the subprocess tests never do.
 - **Unreachable defensive code** — e.g. build_pack's `raise` for an unknown
   `--file_strategy` (argparse already restricts the choices).
-- **`BaseArchive` abstract-method stubs** — `_read_entries` and
-  `extract_entry` both just `raise NotImplementedError`. `BaseArchive`
+- **`BaseArchive` abstract-method stubs** — `looks_like`, `_read_entries`,
+  and `extract_entry` all just `raise NotImplementedError`. `BaseArchive`
   is never instantiated directly, so these methods never run by
   design; subclasses always override them.
 - **parse_pack's non-ASCII filename handler** — reachable, but it calls

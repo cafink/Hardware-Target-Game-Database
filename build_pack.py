@@ -170,12 +170,20 @@ def copy_file(source, dest, original, file_strategy, skip_existing):
 
 
 class BaseArchive:
+    # Every direct subclass is automatically discovered as a supported archive
+    # format via the __subclasses__() method (see get_archive_handler() and
+    # extract_file() below). Adding a new format just entails writing its subclass.
     archive_type = None
     # Exceptions we should handle internally rather than letting propagate.
     handled_exceptions = (OSError,)
 
     def __init__(self, filename):
         self.filename = filename
+
+    @staticmethod
+    def looks_like(filename):
+        """Return True if filename appears to be this archive format."""
+        raise NotImplementedError
 
     def get_entries(self):
         """Yields (entry_name, crc32_hex), handling known failure modes
@@ -203,6 +211,10 @@ class BaseArchive:
 class ZipArchive(BaseArchive):
     archive_type = 'zip'
     handled_exceptions = (OSError, UnicodeDecodeError, zipfile.BadZipFile)
+
+    @staticmethod
+    def looks_like(filename):
+        return zipfile.is_zipfile(filename)
 
     def _read_entries(self):
         with zipfile.ZipFile(self.filename, 'r') as z:
@@ -247,6 +259,10 @@ class SevenZipArchive(BaseArchive):
     handled_exceptions = (OSError, py7zr.exceptions.ArchiveError,
                           struct.error)
 
+    @staticmethod
+    def looks_like(filename):
+        return py7zr.is_7zfile(filename)
+
     def _read_entries(self):
         with py7zr.SevenZipFile(self.filename) as z:
             for name in z.getnames():
@@ -274,10 +290,9 @@ class SevenZipArchive(BaseArchive):
 
 
 def get_archive_handler(filename):
-    if zipfile.is_zipfile(filename):
-        return ZipArchive(filename)
-    elif py7zr.is_7zfile(filename):
-        return SevenZipArchive(filename)
+    for archive_class in BaseArchive.__subclasses__():
+        if archive_class.looks_like(filename):
+            return archive_class(filename)
     return None
 
 
@@ -285,7 +300,8 @@ def extract_file(filename, entry, method, dest):
     """
     extracts entry from archive to given destination directory
     """
-    archive_classes = {'zip': ZipArchive, '7z': SevenZipArchive}
+    archive_classes = {cls.archive_type: cls
+                       for cls in BaseArchive.__subclasses__()}
     if method not in archive_classes:
         raise ValueError(f"Unknown archive method {method!r}")
     archive_classes[method](filename).extract_entry(entry, dest)
