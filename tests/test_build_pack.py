@@ -86,7 +86,7 @@ def test_missing_file_reported_and_coverage(tmp_path, run, make_tree, line):
     assert "gone.bin" in missing.read_text()
 
 
-def test_extract_from_zip_archive(tmp_path, run, make_tree):
+def test_extract_from_zip_archive(tmp_path, run):
     # Build a zip whose entry's CRC we look up to drive the SMDB.
     src = tmp_path / "src"
     src.mkdir()
@@ -229,7 +229,7 @@ def test_existing_empty_target_kept_with_skip(tmp_path, run, make_tree, line):
     assert read(out / "outpack" / "empty.bin") == b"stale-content"
 
 
-def test_zip_with_extra_entries_skips_nonmatching(tmp_path, run, make_tree):
+def test_zip_with_extra_entries_skips_nonmatching(tmp_path, run):
     src = tmp_path / "src"
     src.mkdir()
     zip_path = src / "games.zip"
@@ -254,7 +254,7 @@ def test_zip_with_extra_entries_skips_nonmatching(tmp_path, run, make_tree):
     assert not (out / "outpack" / "other.bin").exists()
 
 
-def test_corrupt_zip_is_reported_but_not_fatal(tmp_path, run, make_tree, line):
+def test_corrupt_zip_is_reported_but_not_fatal(tmp_path, run, line):
     # A file that looks like a zip (valid end-of-central-directory record) but
     # cannot actually be opened triggers the "attempted to parse as a zip"
     # warning; the run still completes successfully.
@@ -274,7 +274,7 @@ def test_corrupt_zip_is_reported_but_not_fatal(tmp_path, run, make_tree, line):
     assert "as a zip archive" in result.stdout
 
 
-def test_corrupt_7z_is_reported_but_not_fatal(tmp_path, run, make_tree, line):
+def test_corrupt_7z_is_reported_but_not_fatal(tmp_path, run, line):
     # A file with a genuine 7z magic number but garbage after it triggers
     # the "failed to read as a 7z archive" warning; the run still
     # completes successfully.
@@ -294,7 +294,7 @@ def test_corrupt_7z_is_reported_but_not_fatal(tmp_path, run, make_tree, line):
     assert "as a 7z archive" in result.stdout
 
 
-def test_extract_from_7z_archive(tmp_path, run, make_tree):
+def test_extract_from_7z_archive(tmp_path, run):
     src = tmp_path / "src"
     src.mkdir()
     sz_path = src / "games.7z"
