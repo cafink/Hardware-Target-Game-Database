@@ -318,6 +318,43 @@ def test_extract_from_7z_archive(tmp_path, run):
     assert read(out / "outpack" / "rom.bin") == b"7z-rom-contents"
 
 
+def test_extract_from_zip_and_7z(tmp_path, run):
+    # Source folder contains both a zip and a 7z archive
+    src = tmp_path / "src"
+    src.mkdir()
+
+    zip_path = src / "games.zip"
+    with zipfile.ZipFile(str(zip_path), "w") as zf:
+        zf.writestr("zip-rom.bin", "zip-rom-contents")
+    with zipfile.ZipFile(str(zip_path)) as zf:
+        zip_crc = "{0:08x}".format(zf.getinfo("zip-rom.bin").CRC & 0xffffffff)
+
+    sz_path = src / "games.7z"
+    rom_file = tmp_path / "rom.bin"
+    rom_file.write_bytes(b"7z-rom-contents")
+    with py7zr.SevenZipFile(str(sz_path), "w") as szf:
+        szf.write(str(rom_file), arcname="7z-rom.bin")
+    with py7zr.SevenZipFile(str(sz_path)) as szf:
+        sz_crc = "{0:08x}".format(szf.getinfo("7z-rom.bin").crc32)
+
+    db = tmp_path / "db.txt"
+    write_db(db, [
+        "\t".join(["0" * 64, "outpack/zip-rom.bin",
+                   "0" * 40, "0" * 32, zip_crc, "16"]),
+        "\t".join(["0" * 64, "outpack/7z-rom.bin",
+                   "0" * 40, "0" * 32, sz_crc, "15"]),
+    ])
+    out = tmp_path / "out"
+
+    result = run("build_pack.py",
+                 ["-i", "src", "-d", str(db), "-o", str(out)],
+                 cwd=tmp_path)
+
+    assert result.returncode == 0
+    assert read(out / "outpack" / "zip-rom.bin") == b"zip-rom-contents"
+    assert read(out / "outpack" / "7z-rom.bin") == b"7z-rom-contents"
+
+
 def test_missing_file_without_report_flag(tmp_path, run, make_tree, line):
     make_tree(tmp_path, {"src": {"a.bin": "aaa"}})
     db = tmp_path / "db.txt"
