@@ -58,9 +58,10 @@ values, filenames, and folder structure
 
 **build_pack.py** For building a pack based on a pre-made SMDB (example command):
 
-Requires the third-party packages listed in `requirements.txt`—
-see [Requirements](#requirements) below. Install them first with
-`pip install -r requirements.txt`.
+7-zip archive (`.7z`) support requires the optional `py7zr` package — see
+[Requirements](#requirements) below. Install it first with `pip install -r
+requirements-archives.txt`. Without it, `build_pack.py` will not recognize `.7z`
+files as archives and will treat them as any other unsupported file type.
 
 ```DOS .bat
 "C:\XXX\build_pack.py" -i "C:\XXX\Folder with unorganized ROMs" -d "C:\XXX\SMDB.txt" -o "C:\XXX\Output folder for rebuilt pack" -m "C:\XXX\Missing.txt"
@@ -157,8 +158,12 @@ trying the GUI version.
 ## Requirements
 
 - [python](https://www.python.org) 3.8 or newer
-- [py7zr](https://pypi.org/project/py7zr/), used by `build_pack.py` for 7z support
 - Linux, MacOS, or Windows
+
+Optional, for extended archive format support in `build_pack.py` (`pip install
+-r requirements-archives.txt`):
+
+- [py7zr](https://pypi.org/project/py7zr/), for 7z support
 
 ## Coding
 

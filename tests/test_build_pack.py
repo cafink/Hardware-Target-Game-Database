@@ -355,6 +355,40 @@ def test_extract_from_zip_and_7z(tmp_path, run):
     assert read(out / "outpack" / "7z-rom.bin") == b"7z-rom-contents"
 
 
+def test_missing_py7zr_treats_7z_as_ordinary_file(tmp_path, run, line):
+    # Simulate py7zr not being installed using a stub module that fails to
+    # import, earlier on PYTHONPATH than the real package. build_pack.py should
+    # behave exactly as it did prior to 7z support: a .7z file is simply not
+    # recognized as an archive.
+    stub_dir = tmp_path / "stub_py7zr"
+    stub_dir.mkdir()
+    (stub_dir / "py7zr.py").write_text(
+        "raise ImportError('py7zr intentionally unavailable for this test')\n")
+
+    src = tmp_path / "src"
+    src.mkdir()
+    magic = b"7z\xbc\xaf\x27\x1c"
+    (src / "games.7z").write_bytes(magic + b"not-really-parsed")
+
+    db = tmp_path / "db.txt"
+    write_db(db, [line("outpack/USA/unrelated.bin", "unrelated")])
+    out = tmp_path / "out"
+
+    existing_pythonpath = os.environ.get("PYTHONPATH", "")
+    pythonpath = str(stub_dir)
+    if existing_pythonpath:
+        pythonpath += os.pathsep + existing_pythonpath
+
+    result = run("build_pack.py",
+                 ["-i", "src", "-d", str(db), "-o", str(out)],
+                 cwd=tmp_path,
+                 env={"PYTHONPATH": pythonpath})
+
+    assert result.returncode == 0
+    assert "7z" not in result.stdout
+    assert "coverage: 0/1 (0.0%)" in result.stdout
+
+
 def test_missing_file_without_report_flag(tmp_path, run, make_tree, line):
     make_tree(tmp_path, {"src": {"a.bin": "aaa"}})
     db = tmp_path / "db.txt"

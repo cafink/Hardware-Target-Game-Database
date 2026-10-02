@@ -27,7 +27,7 @@ expected SMDB lines are computed from the fixture content (see the helpers in
 |------------------|------------------------|-------------------------------------------------------------------------|
 | `parse_pack.py`  | `test_parse_pack.py`   | SMDB contents/format, case-insensitive walk order, banned folders/suffixes |
 | `verify_pack.py` | `test_verify_pack.py`  | correct / extra / missing / misplaced counts, mismatch report sections  |
-| `build_pack.py`  | `test_build_pack.py`   | copy & hardlink strategies, zip/7z extraction, corrupt-archive handling, missing report, skip-existing |
+| `build_pack.py`  | `test_build_pack.py`   | copy & hardlink strategies, zip/7z extraction, corrupt-archive handling, missing report, skip-existing, graceful behavior w/out optional dependencies |
 | `base_sorter.py` | `test_base_sorter.py`  | region/type sorting layout, disc grouping, file-type filter             |
 
 ## Running
@@ -37,9 +37,11 @@ python -m pip install -r requirements-dev.txt   # installs pytest
 pytest                                           # from the repository root
 ```
 
-The `build_pack.py` script depends on the `py7zr` package (see
-`requirements.txt`) for 7z support; the other scripts depend only on the Python
-standard library. `pytest` and `coverage` are the only development dependencies.
+The `build_pack.py` script optionally uses the `py7zr` package for 7z support;
+without it, `.7z` files are not recognized as archives. The other scripts depend
+only on the Python standard library. `requirements-dev.txt` installs `py7zr`
+anyway so the full test suite runs by default. `pytest` and `coverage` are the
+only required development dependencies.
 
 ## Measuring coverage
 
