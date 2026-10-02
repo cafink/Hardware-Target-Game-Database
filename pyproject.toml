@@ -9,7 +9,9 @@ description = "Tools to create, build and verify Hardware Target Game Database (
 readme = "README.md"
 requires-python = ">=3.8"
 license = { file = "LICENSE" }
-dependencies = ["py7zr>=0.20.0"]
+
+[project.optional-dependencies]
+archives = ["py7zr>=0.20.0"]
 
 [project.scripts]
 parse-pack = "parse_pack:main"

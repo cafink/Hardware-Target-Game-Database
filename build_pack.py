@@ -10,7 +10,12 @@ import argparse
 import struct
 import zipfile
 import tempfile
-import py7zr
+try:
+    import py7zr
+except ImportError:
+    # py7zr is an optional dependency: without it, SevenZipArchive is never
+    # defined, and .7z files are treated like any other unsupported file type.
+    py7zr = None
 from collections import defaultdict
 from collections import Counter
 from pathlib import Path
@@ -252,41 +257,44 @@ class ZipArchive(BaseArchive):
         print('***************')
 
 
-class SevenZipArchive(BaseArchive):
-    archive_type = '7z'
-    # py7zr's header parser can raise a bare struct.error (rather than one
-    # of its own ArchiveError subclasses) on a truncated/corrupt file.
-    handled_exceptions = (OSError, py7zr.exceptions.ArchiveError,
-                          struct.error)
+# SevenZipArchive is only defined when py7zr is actually installed; otherwise,
+# the class is absent from BaseArchive.__subclasses__().
+if py7zr:
+    class SevenZipArchive(BaseArchive):
+        archive_type = '7z'
+        # py7zr's header parser can raise a bare struct.error (rather than
+        # one of its own ArchiveError subclasses) on a truncated/corrupt file.
+        handled_exceptions = (OSError, py7zr.exceptions.ArchiveError,
+                              struct.error)
 
-    @staticmethod
-    def looks_like(filename):
-        return py7zr.is_7zfile(filename)
+        @staticmethod
+        def looks_like(filename):
+            return py7zr.is_7zfile(filename)
 
-    def _read_entries(self):
-        with py7zr.SevenZipFile(self.filename) as z:
-            for name in z.getnames():
-                yield name, f"{z.getinfo(name).crc32:08x}"
+        def _read_entries(self):
+            with py7zr.SevenZipFile(self.filename) as z:
+                for name in z.getnames():
+                    yield name, f"{z.getinfo(name).crc32:08x}"
 
-    def extract_entry(self, entry, dest):
-        with py7zr.SevenZipFile(self.filename) as z:
-            with tempfile.TemporaryDirectory() as tmpdir:
-                z.extract(path=tmpdir, targets=[entry])
-                extracted_file = Path(tmpdir) / entry
-                with open(extracted_file, "rb") as source, open(dest, "wb") as target:
-                    shutil.copyfileobj(source, target)
+        def extract_entry(self, entry, dest):
+            with py7zr.SevenZipFile(self.filename) as z:
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    z.extract(path=tmpdir, targets=[entry])
+                    extracted_file = Path(tmpdir) / entry
+                    with open(extracted_file, "rb") as source, open(dest, "wb") as target:
+                        shutil.copyfileobj(source, target)
 
-    def handle_error(self):
-        # Unlike zip's end-of-central-directory scan, py7zr's is_7zfile()
-        # check is an exact magic-number match, so a false positive is very
-        # unlikely. A failure therefore almost certainly indicates that the file
-        # is corrupt or uses an unsupported feature.
-        print('**** ERROR ****')
-        print('**** Failed to read {} as a 7z archive.'.format(
-              self.filename))
-        print('**** The file may be corrupt or use an unsupported feature '
-              '(e.g. encryption).')
-        print('***************')
+        def handle_error(self):
+            # Unlike zip's end-of-central-directory scan, py7zr's is_7zfile()
+            # check is an exact magic-number match, so a false positive is very
+            # unlikely. A failure therefore almost certainly indicates that the file
+            # is corrupt or uses an unsupported feature.
+            print('**** ERROR ****')
+            print('**** Failed to read {} as a 7z archive.'.format(
+                  self.filename))
+            print('**** The file may be corrupt or use an unsupported feature '
+                  '(e.g. encryption).')
+            print('***************')
 
 
 def get_archive_handler(filename):
