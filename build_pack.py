@@ -16,6 +16,11 @@ except ImportError:
     # py7zr is an optional dependency: without it, SevenZipArchive is never
     # defined, and .7z files are treated like any other unsupported file type.
     py7zr = None
+try:
+    import rarfile
+except ImportError:
+    # Same for rarfile
+    rarfile = None
 from collections import defaultdict
 from collections import Counter
 from pathlib import Path
@@ -294,6 +299,67 @@ if py7zr:
                   self.filename))
             print('**** The file may be corrupt or use an unsupported feature '
                   '(e.g. encryption).')
+            print('***************')
+
+
+# RarArchive:rarfile::SevenZipArchive:py7zr.
+if rarfile:
+    class RarArchive(BaseArchive):
+        archive_type = 'rar'
+        # rarfile raises its own Error subclasses for damaged or misidentified
+        # archives; OSError covers files that cannot be read at all.
+        handled_exceptions = (OSError, rarfile.Error)
+
+        @staticmethod
+        def looks_like(filename):
+            return rarfile.is_rarfile(filename)
+
+        def _read_entries(self):
+            with rarfile.RarFile(self.filename) as r:
+                for info in r.infolist():
+                    # RAR5 records a CRC only when the archiving tool sets the
+                    # relevant header flag, so an entry may carry none at all.
+                    # Directories never have one either, and hold no content
+                    # worth matching.
+                    if info.is_dir() or info.CRC is None:
+                        continue
+                    # Unlike zip, rarfile reports the CRC already unsigned.
+                    yield info.filename, '{0:08x}'.format(info.CRC)
+
+        def extract_entry(self, entry, dest):
+            with rarfile.RarFile(self.filename) as r:
+                try:
+                    # Opening the entry is what shells out to the external
+                    # tool, so a missing one is reported before the
+                    # destination file has been created.
+                    source = r.open(entry)
+                except rarfile.RarCannotExec:
+                    self.handle_missing_tool()
+                    return
+                with source, open(dest, "wb") as target:
+                    shutil.copyfileobj(source, target)
+
+        def handle_error(self):
+            # Reached only for a file that cannot be read at all: rarfile
+            # treats a damaged archive as one that simply ends early rather
+            # than raising, so corruption yields no entries instead of an
+            # error.
+            print('**** ERROR ****')
+            print('**** Failed to read {} as a rar archive.'.format(
+                  self.filename))
+            print('**** The file may be corrupt or use an unsupported feature '
+                  '(e.g. encryption).')
+            print('***************')
+
+        def handle_missing_tool(self):
+            # Unlike every other format here, rar cannot be decompressed in
+            # pure Python: rarfile shells out to an external utility, which
+            # listing an archive does not need but extracting from one does.
+            print('**** ERROR ****')
+            print('**** Cannot extract from {}: no rar utility found.'.format(
+                  self.filename))
+            print('**** Install unrar or unrar-free and run this script'
+                  ' again.')
             print('***************')
 
 

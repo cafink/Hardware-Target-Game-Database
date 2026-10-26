@@ -12,9 +12,11 @@ Note: parse_database here splits each SMDB line into 5 columns
 their crc, so the fixtures use full 6-column SMDB lines.
 """
 import os
+import shutil
 import struct
 import zipfile
 import py7zr
+import rarfile
 
 
 def write_db(path, lines):
@@ -318,6 +320,52 @@ def test_extract_from_7z_archive(tmp_path, run):
     assert read(out / "outpack" / "rom.bin") == b"7z-rom-contents"
 
 
+def test_corrupt_rar_is_skipped_but_not_fatal(tmp_path, run, line, fixture):
+    # A truncated rar is still recognized as one, but unlike zip and 7z it
+    # produces no warning: rarfile's header parser treats damage as the end
+    # of the archive rather than raising, so the file simply yields no
+    # entries. The run still completes successfully.
+    src = tmp_path / "src"
+    src.mkdir()
+    intact = read(fixture("rar-rom.rar"))
+    (src / "corrupt.rar").write_bytes(intact[:len(intact) // 2])
+    db = tmp_path / "db.txt"
+    write_db(db, [line("outpack/USA/unrelated.bin", "unrelated")])
+    out = tmp_path / "out"
+
+    result = run("build_pack.py",
+                 ["-i", "src", "-d", str(db), "-o", str(out)],
+                 cwd=tmp_path)
+
+    assert result.returncode == 0
+    assert "coverage: 0/1 (0.0%)" in result.stdout
+
+
+def test_extract_from_rar_archive(tmp_path, run, fixture):
+    # rar archives cannot be created programmatically, so this one is checked
+    # in (see tests/README.md). Its CRC is read back out of the real archive
+    # rather than hard-coded, exactly as the zip and 7z tests do.
+    src = tmp_path / "src"
+    src.mkdir()
+    rar_path = src / "games.rar"
+    shutil.copyfile(fixture("rar-rom.rar"), str(rar_path))
+    with rarfile.RarFile(str(rar_path)) as rf:
+        info = rf.infolist()[0]
+        crc = "{0:08x}".format(info.CRC)
+
+    db = tmp_path / "db.txt"
+    write_db(db, ["\t".join(["0" * 64, "outpack/rom.bin",
+                             "0" * 40, "0" * 32, crc, str(info.file_size)])])
+    out = tmp_path / "out"
+
+    result = run("build_pack.py",
+                 ["-i", "src", "-d", str(db), "-o", str(out)],
+                 cwd=tmp_path)
+
+    assert result.returncode == 0
+    assert read(out / "outpack" / "rom.bin") == b"rar-rom-contents" * 256
+
+
 def test_extract_from_zip_and_7z(tmp_path, run):
     # Source folder contains both a zip and a 7z archive
     src = tmp_path / "src"
@@ -387,6 +435,70 @@ def test_missing_py7zr_treats_7z_as_ordinary_file(tmp_path, run, line):
     assert result.returncode == 0
     assert "7z" not in result.stdout
     assert "coverage: 0/1 (0.0%)" in result.stdout
+
+
+def test_missing_rarfile_treats_rar_as_ordinary_file(tmp_path, run, line,
+                                                     fixture):
+    # As above, but for rarfile: without it a real rar archive is simply not
+    # recognized, rather than reported as damaged or causing a failure.
+    stub_dir = tmp_path / "stub_rarfile"
+    stub_dir.mkdir()
+    (stub_dir / "rarfile.py").write_text(
+        "raise ImportError('rarfile intentionally unavailable for this test')\n")
+
+    src = tmp_path / "src"
+    src.mkdir()
+    shutil.copyfile(fixture("rar-rom.rar"), str(src / "games.rar"))
+
+    db = tmp_path / "db.txt"
+    write_db(db, [line("outpack/USA/unrelated.bin", "unrelated")])
+    out = tmp_path / "out"
+
+    existing_pythonpath = os.environ.get("PYTHONPATH", "")
+    pythonpath = str(stub_dir)
+    if existing_pythonpath:
+        pythonpath += os.pathsep + existing_pythonpath
+
+    result = run("build_pack.py",
+                 ["-i", "src", "-d", str(db), "-o", str(out)],
+                 cwd=tmp_path,
+                 env={"PYTHONPATH": pythonpath})
+
+    assert result.returncode == 0
+    assert "rar" not in result.stdout
+    assert "coverage: 0/1 (0.0%)" in result.stdout
+
+
+def test_missing_rar_tool_is_reported_but_not_fatal(tmp_path, run, fixture):
+    # rarfile is installed but no external utility is available to decompress
+    # with. Listing the archive still works, so the entry is matched, but
+    # extraction reports the missing tool instead of failing the run.
+    stub_dir = tmp_path / "stub_tool"
+    stub_dir.mkdir()
+
+    src = tmp_path / "src"
+    src.mkdir()
+    rar_path = src / "games.rar"
+    shutil.copyfile(fixture("rar-rom.rar"), str(rar_path))
+    with rarfile.RarFile(str(rar_path)) as rf:
+        info = rf.infolist()[0]
+        crc = "{0:08x}".format(info.CRC)
+
+    db = tmp_path / "db.txt"
+    write_db(db, ["\t".join(["0" * 64, "outpack/rom.bin",
+                             "0" * 40, "0" * 32, crc, str(info.file_size)])])
+    out = tmp_path / "out"
+
+    # An empty PATH leaves rarfile unable to find any extraction utility.
+    result = run("build_pack.py",
+                 ["-i", "src", "-d", str(db), "-o", str(out)],
+                 cwd=tmp_path,
+                 env={"PATH": str(stub_dir)})
+
+    assert result.returncode == 0
+    assert "no rar utility found" in result.stdout
+    # Nothing was extracted, and no empty placeholder was left behind.
+    assert not (out / "outpack" / "rom.bin").exists()
 
 
 def test_missing_file_without_report_flag(tmp_path, run, make_tree, line):

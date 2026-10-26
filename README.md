@@ -58,10 +58,11 @@ values, filenames, and folder structure
 
 **build_pack.py** For building a pack based on a pre-made SMDB (example command):
 
-7-zip archive (`.7z`) support requires the optional `py7zr` package — see
-[Requirements](#requirements) below. Install it first with `pip install -r
-requirements-archives.txt`. Without it, `build_pack.py` will not recognize `.7z`
-files as archives and will treat them as any other unsupported file type.
+7-zip (`.7z`) and rar (`.rar`) archive support requires optional packages — see
+[Requirements](#requirements) below. Install them first with `pip install -r
+requirements-archives.txt`. Without them, `build_pack.py` will not recognize
+those files as archives and will treat them as any other unsupported file type.
+Zip archives need only the Python standard library.
 
 ```DOS .bat
 "C:\XXX\build_pack.py" -i "C:\XXX\Folder with unorganized ROMs" -d "C:\XXX\SMDB.txt" -o "C:\XXX\Output folder for rebuilt pack" -m "C:\XXX\Missing.txt"
@@ -165,10 +166,19 @@ Optional, for extended archive format support in `build_pack.py` (`pip install
 
 - [py7zr](https://pypi.org/project/py7zr/), for 7z support (requires Python 3.9
   or newer)
+- [rarfile](https://pypi.org/project/rarfile/), for rar support (requires Python
+  3.10 or newer)
 
 On older Python versions, `pip install` omits packages needing a newer Python
 version, and `build_pack.py` then treats those archives like any other
 unsupported file.
+
+Rar support additionally requires that a rar utility be installed on your
+system, because rar archives cannot be decompressed in pure Python. Either
+[unrar](https://www.rarlab.com/rar_add.htm) (RARLAB's free util) or
+[unrar-free](https://gitlab.com/bgermann/unrar-free) (packaged by Debian and
+Ubuntu) will suffice. Without such a utility, rar archives can still be read to
+identify what they contain, but their contents cannot be extracted.
 
 ## Coding
 

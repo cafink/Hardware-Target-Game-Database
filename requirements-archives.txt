@@ -1,1 +1,2 @@
 py7zr>=1.0; python_version >= "3.9"
+rarfile>=4.3; python_version >= "3.10"

@@ -31,6 +31,23 @@ def repo_root():
     return REPO_ROOT
 
 
+# Most archive fixtures are built on the fly, but rar archives cannot be
+# created by any FOSS tool, so a real one is checked in instead
+FIXTURES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                            "fixtures")
+
+
+def fixture_path(name):
+    """Absolute path to a binary test fixture."""
+    return os.path.join(FIXTURES_DIR, name)
+
+
+@pytest.fixture
+def fixture():
+    """Expose :func:`fixture_path` to tests."""
+    return fixture_path
+
+
 def run_script(script_name, args, cwd, env=None):
     """
     Run one of the repository's scripts via its CLI.
