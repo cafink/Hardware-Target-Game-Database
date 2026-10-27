@@ -163,7 +163,12 @@ trying the GUI version.
 Optional, for extended archive format support in `build_pack.py` (`pip install
 -r requirements-archives.txt`):
 
-- [py7zr](https://pypi.org/project/py7zr/), for 7z support
+- [py7zr](https://pypi.org/project/py7zr/), for 7z support (requires Python 3.9
+  or newer)
+
+On older Python versions, `pip install` omits packages needing a newer Python
+version, and `build_pack.py` then treats those archives like any other
+unsupported file.
 
 ## Coding
 
