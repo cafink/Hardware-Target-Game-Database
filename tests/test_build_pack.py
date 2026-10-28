@@ -366,8 +366,8 @@ def test_extract_from_rar_archive(tmp_path, run, fixture):
     assert read(out / "outpack" / "rom.bin") == b"rar-rom-contents" * 256
 
 
-def test_extract_from_zip_and_7z(tmp_path, run):
-    # Source folder contains both a zip and a 7z archive
+def test_extract_from_zip_7z_and_rar(tmp_path, run, fixture):
+    # Source folder contains a zip, a 7z and a rar archive
     src = tmp_path / "src"
     src.mkdir()
 
@@ -385,12 +385,20 @@ def test_extract_from_zip_and_7z(tmp_path, run):
     with py7zr.SevenZipFile(str(sz_path)) as szf:
         sz_crc = "{0:08x}".format(szf.getinfo("7z-rom.bin").crc32)
 
+    rar_path = src / "games.rar"
+    shutil.copyfile(fixture("rar-rom.rar"), str(rar_path))
+    with rarfile.RarFile(str(rar_path)) as rf:
+        rar_info = rf.infolist()[0]
+        rar_crc = "{0:08x}".format(rar_info.CRC)
+
     db = tmp_path / "db.txt"
     write_db(db, [
         "\t".join(["0" * 64, "outpack/zip-rom.bin",
                    "0" * 40, "0" * 32, zip_crc, "16"]),
         "\t".join(["0" * 64, "outpack/7z-rom.bin",
                    "0" * 40, "0" * 32, sz_crc, "15"]),
+        "\t".join(["0" * 64, "outpack/rar-rom.bin",
+                   "0" * 40, "0" * 32, rar_crc, str(rar_info.file_size)]),
     ])
     out = tmp_path / "out"
 
@@ -401,6 +409,7 @@ def test_extract_from_zip_and_7z(tmp_path, run):
     assert result.returncode == 0
     assert read(out / "outpack" / "zip-rom.bin") == b"zip-rom-contents"
     assert read(out / "outpack" / "7z-rom.bin") == b"7z-rom-contents"
+    assert read(out / "outpack" / "rar-rom.bin") == b"rar-rom-contents" * 256
 
 
 def test_missing_py7zr_treats_7z_as_ordinary_file(tmp_path, run, line):
