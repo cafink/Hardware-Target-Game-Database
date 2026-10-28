@@ -180,6 +180,36 @@ system, because rar archives cannot be decompressed in pure Python. Either
 Ubuntu) will suffice. Without such a utility, rar archives can still be read to
 identify what they contain, but their contents cannot be extracted.
 
+## Running with Docker
+
+As an alternative to installing Python, the optional packages and a rar utility
+yourself, you can run the scripts in a [Docker](https://www.docker.com)
+container that already has all of them. This is optional; the scripts behave the
+same either way.
+
+Build the image from the repository folder:
+
+```sh
+docker build -t htgdb .
+```
+
+The image contains only the dependencies, not the scripts themselves, so mount
+the repo into it when you run it, along with the folder holding your ROMs. For
+example, to build a pack:
+
+```sh
+docker run --rm -it \
+  --mount type=bind,src="$(pwd)",target=/usr/src/app \
+  --mount type=bind,src="/path/to/roms",target=/mnt/roms \
+  htgdb python build_pack.py -i /mnt/roms/unsorted \
+    -d "EverDrive Pack SMDBs/Mega EverDrive SMDB.txt" -o /mnt/roms/pack
+```
+
+The paths passed to the scripts refer to locations inside the container:
+`/mnt/roms/...` for your ROM folder, and anything else relative to the
+repository. In Windows PowerShell, end each continued line with a backtick
+(`` ` ``) instead of `\`.
+
 ## Coding
 
 Scripts and code by

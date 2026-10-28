@@ -59,6 +59,13 @@ rarfile shells out to one. In Debian and Ubuntu that is `apt install
 unrar-free`, which also installs an `unrar` alias that rarfile finds
 automatically.
 
+Alternatively, the repository's Docker image has all of this installed (see
+"Running with Docker" in the main README):
+
+```sh
+docker run --rm --mount type=bind,src="$(pwd)",target=/usr/src/app htgdb pytest
+```
+
 ## Measuring coverage
 
 Because the tests run each script as a **subprocess**, a plain `pytest --cov`

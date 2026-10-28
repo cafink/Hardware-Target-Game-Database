@@ -1,0 +1,5 @@
+# The image only needs the requirements files; the code itself is mounted at
+# run time (see Dockerfile), so keep everything else out of the build context.
+*
+!requirements-archives.txt
+!requirements-dev.txt
