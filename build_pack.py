@@ -472,8 +472,12 @@ def parse_folder(source_folder, db, output_folder, file_strategy,
                                               original,
                                               file_strategy,
                                               skip_existing)
-                        # remove the hit from the database
-                        del db[h]
+                        else:
+                            # Remove the hit from the database, but only if the
+                            # loop wasn't broken by a failed extraction. An
+                            # entry that couldn't be extracted should still be
+                            # reported missing.
+                            del db[h]
 
                 i += 1
                 progress.print_message(progress.format_progress(i, total),

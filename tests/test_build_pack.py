@@ -488,10 +488,12 @@ def test_missing_rar_tool_is_reported_but_not_fatal(tmp_path, run, fixture):
     write_db(db, ["\t".join(["0" * 64, "outpack/rom.bin",
                              "0" * 40, "0" * 32, crc, str(info.file_size)])])
     out = tmp_path / "out"
+    missing = tmp_path / "missing.txt"
 
     # An empty PATH leaves rarfile unable to find any extraction utility.
     result = run("build_pack.py",
-                 ["-i", "src", "-d", str(db), "-o", str(out)],
+                 ["-i", "src", "-d", str(db), "-o", str(out),
+                  "-m", str(missing)],
                  cwd=tmp_path,
                  env={"PATH": str(stub_dir)})
 
@@ -499,6 +501,9 @@ def test_missing_rar_tool_is_reported_but_not_fatal(tmp_path, run, fixture):
     assert "no rar utility found" in result.stdout
     # Nothing was extracted, and no empty placeholder was left behind.
     assert not (out / "outpack" / "rom.bin").exists()
+    # The entry was matched but never produced, so it is still missing.
+    assert "coverage: 0/1 (0.0%)" in result.stdout
+    assert "rom.bin" in missing.read_text()
 
 
 def test_archive_entry_with_several_destinations_is_extracted_once(tmp_path,
@@ -560,6 +565,7 @@ def test_missing_rar_tool_is_reported_once_per_entry(tmp_path, run, fixture):
     assert result.stdout.count("no rar utility found") == 1
     assert not (out / "outpack" / "USA" / "rom.bin").exists()
     assert not (out / "outpack" / "Japan" / "rom.bin").exists()
+    assert "coverage: 0/2 (0.0%)" in result.stdout
 
 
 def test_missing_file_without_report_flag(tmp_path, run, make_tree, line):
