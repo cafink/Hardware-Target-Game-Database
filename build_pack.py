@@ -431,6 +431,11 @@ def parse_folder(source_folder, db, output_folder, file_strategy,
                     if h in db:
                         # we have a hit
                         loop = 0
+                        # An archive entry is extracted only once; subsequent
+                        # destinations for the same hash are copied/linked from
+                        # that first extracted instance, just as with a plain
+                        # file.
+                        extracted = None
                         for entry in db[h]:
                             loop += 1
                             new_path = Path(output_folder) / Path(entry).parent
@@ -442,12 +447,24 @@ def parse_folder(source_folder, db, output_folder, file_strategy,
                                 original = new_file
                             if (not skip_existing or not
                                     new_file.exists()):
-                                if info['archive']:
+                                if info['archive'] and extracted is None:
                                     # extract file from archive to directory
                                     extract_file(info['filename'],
                                                  info['archive']['entry'],
                                                  info['archive']['type'],
                                                  new_file)
+                                    if not new_file.exists():
+                                        # Extraction failed and has been
+                                        # reported. Additional destinations will
+                                        # just fail the same way.
+                                        break
+                                    extracted = new_file
+                                elif info['archive']:
+                                    copy_file(extracted,
+                                              new_file,
+                                              extracted,
+                                              file_strategy,
+                                              skip_existing)
                                 else:
                                     # copy the file to the new directory
                                     copy_file(info['filename'],

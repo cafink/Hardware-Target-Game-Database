@@ -501,6 +501,67 @@ def test_missing_rar_tool_is_reported_but_not_fatal(tmp_path, run, fixture):
     assert not (out / "outpack" / "rom.bin").exists()
 
 
+def test_archive_entry_with_several_destinations_is_extracted_once(tmp_path,
+                                                                   run):
+    # One zip entry matches two SMDB destinations. It is extracted once and
+    # the second destination is filled from that copy, so under the hardlink
+    # strategy both paths are the same file.
+    src = tmp_path / "src"
+    src.mkdir()
+    zip_path = src / "games.zip"
+    with zipfile.ZipFile(str(zip_path), "w") as zf:
+        zf.writestr("rom.bin", "rom-contents")
+    with zipfile.ZipFile(str(zip_path)) as zf:
+        crc = "{0:08x}".format(zf.getinfo("rom.bin").CRC & 0xffffffff)
+
+    db = tmp_path / "db.txt"
+    write_db(db, ["\t".join(["0" * 64, path, "0" * 40, "0" * 32, crc, "12"])
+                  for path in ("outpack/USA/rom.bin", "outpack/Japan/rom.bin")])
+    out = tmp_path / "out"
+
+    result = run("build_pack.py",
+                 ["-i", "src", "-d", str(db), "-o", str(out),
+                  "--file_strategy", "hardlink"],
+                 cwd=tmp_path)
+
+    assert result.returncode == 0
+    first = out / "outpack" / "USA" / "rom.bin"
+    second = out / "outpack" / "Japan" / "rom.bin"
+    assert read(first) == b"rom-contents"
+    assert os.path.samefile(str(first), str(second))
+
+
+def test_missing_rar_tool_is_reported_once_per_entry(tmp_path, run, fixture):
+    # An entry matching several destinations is reported once when it can't
+    # be extracted, rather than once per destination.
+    stub_dir = tmp_path / "stub_tool"
+    stub_dir.mkdir()
+
+    src = tmp_path / "src"
+    src.mkdir()
+    rar_path = src / "games.rar"
+    shutil.copyfile(fixture("rar-rom.rar"), str(rar_path))
+    with rarfile.RarFile(str(rar_path)) as rf:
+        info = rf.infolist()[0]
+        crc = "{0:08x}".format(info.CRC)
+
+    db = tmp_path / "db.txt"
+    write_db(db, ["\t".join(["0" * 64, path, "0" * 40, "0" * 32, crc,
+                             str(info.file_size)])
+                  for path in ("outpack/USA/rom.bin", "outpack/Japan/rom.bin")])
+    out = tmp_path / "out"
+
+    result = run("build_pack.py",
+                 ["-i", "src", "-d", str(db), "-o", str(out)],
+                 cwd=tmp_path,
+                 env={"PATH": str(stub_dir)})
+
+    assert result.returncode == 0
+    assert result.stdout.count("no rar utility found") == 1
+    assert not (out / "outpack" / "USA" / "rom.bin").exists()
+    assert not (out / "outpack" / "Japan" / "rom.bin").exists()
+
+
 def test_missing_file_without_report_flag(tmp_path, run, make_tree, line):
     make_tree(tmp_path, {"src": {"a.bin": "aaa"}})
     db = tmp_path / "db.txt"
