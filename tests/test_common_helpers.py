@@ -7,6 +7,7 @@ exercise it in-process — the helpers are pure and carry no global state.
 """
 import argparse
 import hashlib
+import io
 import zlib
 
 import pytest
@@ -57,6 +58,13 @@ def test_sha256_file_matches_hashlib(tmp_path):
     target = tmp_path / "rom.bin"
     target.write_bytes(payload)
     assert hashing.sha256_file(str(target)) == \
+        hashlib.sha256(payload).hexdigest()
+
+
+def test_sha256_stream_matches_hashlib():
+    # Larger than one read chunk, so the chunked loop runs more than once.
+    payload = b"some rom bytes" * (hashing.CHUNK_SIZE // 4)
+    assert hashing.sha256_stream(io.BytesIO(payload)) == \
         hashlib.sha256(payload).hexdigest()
 
 

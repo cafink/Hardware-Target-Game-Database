@@ -97,9 +97,6 @@ out of scope:
   `RarArchive.handle_error`, which only a wholly unreadable file could reach:
   rarfile reports a damaged archive as one that ends early rather than
   raising.
-- **`RarArchive`'s skip for directories and CRC-less entries** — the checked-in
-  rar fixture holds a single ordinary entry with a CRC, and a RAR5 entry
-  lacking one cannot be produced by any available tool.
 - **`BaseArchive` abstract-method stubs** — `looks_like`, `_read_entries`,
   and `extract_entry` all just `raise NotImplementedError`. `BaseArchive`
   is never instantiated directly, so these methods never run by

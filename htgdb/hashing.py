@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import os
 import zlib
-from typing import NamedTuple, Union
+from typing import BinaryIO, NamedTuple, Union
 
 # Files are read in 128 KiB chunks so large ROMs are never held in memory.
 CHUNK_SIZE = 128 * 1024
@@ -23,13 +23,18 @@ class FileDigests(NamedTuple):
     size: int
 
 
+def sha256_stream(stream: BinaryIO) -> str:
+    """Return the hex SHA256 digest of everything left to read in ``stream``."""
+    digest = hashlib.sha256()
+    for chunk in iter(lambda: stream.read(CHUNK_SIZE), b""):
+        digest.update(chunk)
+    return digest.hexdigest()
+
+
 def sha256_file(path: PathLike) -> str:
     """Return the hex SHA256 digest of the file at ``path``."""
-    digest = hashlib.sha256()
     with open(path, "rb", buffering=0) as handle:
-        for chunk in iter(lambda: handle.read(CHUNK_SIZE), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
+        return sha256_stream(handle)
 
 
 def file_digests(path: PathLike) -> FileDigests:

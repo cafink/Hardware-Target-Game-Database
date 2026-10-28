@@ -196,8 +196,9 @@ class BaseArchive:
         raise NotImplementedError
 
     def get_entries(self):
-        """Yields (entry_name, crc32_hex), handling known failure modes
-        internally."""
+        """Yields (entry_name, hash_hex), handling known failure modes
+        internally. The hash is normally the entry's CRC32, but may be its
+        SHA256 instead when the archive doesn't record the CRC."""
         try:
             yield from self._read_entries()
         except self.handled_exceptions:
@@ -317,14 +318,25 @@ if rarfile:
         def _read_entries(self):
             with rarfile.RarFile(self.filename) as r:
                 for info in r.infolist():
-                    # RAR5 records a CRC only when the archiving tool sets the
-                    # relevant header flag, so an entry may carry none at all.
-                    # Directories never have one either, and hold no content
-                    # worth matching.
-                    if info.is_dir() or info.CRC is None:
+                    # Directories hold no content worth matching.
+                    if info.is_dir():
                         continue
-                    # Unlike zip, rarfile reports the CRC already unsigned.
-                    yield info.filename, '{0:08x}'.format(info.CRC)
+                    if info.CRC is not None:
+                        # Unlike zip, rarfile reports the CRC already unsigned.
+                        yield info.filename, '{0:08x}'.format(info.CRC)
+                        continue
+                    # RAR5 records a CRC only when the archiving tool sets the
+                    # appropriate header flag. When one is not present, hash the
+                    # contents instead. SMDB entries are also indexed by SHA256,
+                    # which (unlike CRC32) every SMDB entry is guaranteed to
+                    # have.
+                    try:
+                        source = r.open(info)
+                    except rarfile.RarCannotExec:
+                        self.handle_missing_tool()
+                        continue
+                    with source:
+                        yield info.filename, hashing.sha256_stream(source)
 
         def extract_entry(self, entry, dest):
             with rarfile.RarFile(self.filename) as r:
